@@ -1,0 +1,89 @@
+import type Database from 'better-sqlite3';
+import * as assignmentsRepository from '../domain/assignments/assignments-repository.js';
+import * as consumersRepository from '../domain/consumers/consumers-repository.js';
+import type { ClientFormat, ConsumerRecord } from '../domain/consumers/consumer-types.js';
+import * as claudeCodeWriter from './claude-code-writer.js';
+import type { ConfigWriter, WriteConfigResult } from './writer-interface.js';
+
+/**
+ * Writer registry keyed by client format. Claude Code is the only P1
+ * writer (cursor/vscode/desktop-profile shims are P2 additions of the same
+ * `ConfigWriter` shape, added here when they land).
+ */
+const DEFAULT_WRITERS: Partial<Record<ClientFormat, ConfigWriter>> = {
+  'claude-code': claudeCodeWriter,
+};
+
+export interface ConfigRewriteServiceDeps {
+  db: Database.Database;
+  /** Reachable base for the gateway (host-published address), always
+   * supplied by the caller -- never read from env here. */
+  gatewayBaseUrl: string;
+  /** Injectable for tests; defaults to the production writer registry. */
+  writers?: Partial<Record<ClientFormat, ConfigWriter>>;
+}
+
+/**
+ * CFG-02: rewrites the native client config(s) for each given consumer.
+ * Per consumer, resolves its current `allowedMcpIds` scope (0 assignments
+ * still triggers a writeConfig call so the writer can clean up its managed
+ * entry) and dispatches to every writer registered for the consumer.
+ *
+ * Only `project` consumers are dispatched to a writer today -- Claude
+ * Desktop profiles get their `mcpServers` shim block from a P2 writer that
+ * doesn't exist yet, so a desktop-profile consumer intentionally produces
+ * no results here rather than being (incorrectly) handed to the Claude
+ * Code `.mcp.json` writer.
+ *
+ * Each writer call is isolated in try/catch so one consumer's failure
+ * never aborts the batch; the `ConfigWriter` contract itself already
+ * returns `status:'error'` instead of throwing, so this catch is a
+ * defense-in-depth guard against a writer that violates that contract.
+ */
+export async function rewriteConfigsForConsumers(
+  deps: ConfigRewriteServiceDeps,
+  consumerIds: string[],
+): Promise<WriteConfigResult[]> {
+  const writers = deps.writers ?? DEFAULT_WRITERS;
+  const results: WriteConfigResult[] = [];
+
+  for (const consumerId of consumerIds) {
+    const consumer = consumersRepository.getConsumer(deps.db, consumerId);
+    if (!consumer || consumer.type !== 'project') {
+      continue;
+    }
+
+    const hasAssignments =
+      assignmentsRepository.allowedMcpIds(deps.db, consumerId).length > 0;
+
+    for (const format of Object.keys(writers) as ClientFormat[]) {
+      const writer = writers[format];
+      if (!writer) {
+        continue;
+      }
+      results.push(await runWriter(writer, format, consumer, deps.gatewayBaseUrl, hasAssignments));
+    }
+  }
+
+  return results;
+}
+
+async function runWriter(
+  writer: ConfigWriter,
+  format: ClientFormat,
+  consumer: ConsumerRecord,
+  gatewayBaseUrl: string,
+  hasAssignments: boolean,
+): Promise<WriteConfigResult> {
+  try {
+    return await writer.writeConfig(consumer, gatewayBaseUrl, hasAssignments);
+  } catch (err) {
+    return {
+      consumerId: consumer.id,
+      format,
+      path: consumer.path,
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
