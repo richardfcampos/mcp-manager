@@ -214,6 +214,7 @@ interface Assignment { id: string; consumerId: string; mcpServerId: string; crea
 | Runtime dos MCPs stdio | `StdioClientTransport` do SDK (spawna o child) | Elimina supervisor externo; SDK já gerencia |
 | Transporte do gateway | Streamable HTTP em `/mcp/:token` | Recomendado atual; nativo em Claude Code/Cursor/VS Code |
 | Imagem Docker | `node:22-slim` + `uv` copiado de `ghcr.io/astral-sh/uv` | Node(`npx`)+Python(`uvx`) na mesma imagem |
+| Bind host (refinado no Execute, fase 1) | `HOST` sobrescrevível: default loopback em execução bare; Dockerfile seta `HOST=0.0.0.0` interno; **garantia localhost-only vem do publish `127.0.0.1:PORT:PORT` no compose** | Bindar 127.0.0.1 dentro do container o torna inalcançável pelo port-mapping do Docker (verificado); a fronteira de segurança correta é o host-publish. Preserva a intenção de AD-010 |
 
 > Decisões de nível de projeto propagadas p/ `.specs/STATE.md` como AD-011..AD-015.
 

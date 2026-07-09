@@ -12,8 +12,21 @@ Per-task contract: (1) tests derive from the spec ACs and assert spec-defined ou
 
 **Spec**: `.specs/features/mcp-gateway-manager/spec.md`  
 **Design**: `.specs/features/mcp-gateway-manager/design.md`  
-**Status**: Draft (awaiting user approval)  
+**Status**: ✅ COMPLETE — all 55 tasks done · Verifier PASS (15/15 ACs, 9/9 mutants killed, 198 tests)  
 **Totals**: 55 tasks · 6 phases · all 15 P1 requirement IDs mapped
+
+### Execution Progress
+
+- **Phase 1 — Scaffold & Toolchain ✅** (branch `feat/mcp-gateway-mvp`): T1 `b5a6f78` · T2 `a4a1df1` · T3 `a8890fc` · T4 `983cba5` · T5 `0c2f47c` · T6 `f7c60b2` · T7 `4eb5280` · T8 `32fb82f` · T9 `1143f33` · T10 `65a290b` + fix `e90913e` (HOST env-overridable). 5 unit tests green; Docker validated end-to-end (container up → `curl /healthz` 200). Real bugs fixed: uid-1000 collision in node:22-slim, tailwind postcss config path, in-container bind host.
+- **Phase 2 — Persistence & Vault ✅**: T11 `26ca515` · T12 `d4dd2f8` · T13 `7df059b` · T14 `6ce44a9`. 21 tests total green (5+5+7+4). `secret` table has no plaintext column (SEC-01 at schema level).
+  - ⚠️ **Carry-forward**: `runMigrations` resolves the migrations dir via `import.meta.url`; the `.sql` files must be copied into `dist/db/migrations/` in the Docker build (tsc doesn't copy non-TS assets) — assign to Phase 6 final assembly (T56) or a Dockerfile build-step fix. Not blocking phases 3–6 (they run against `src`).
+- **Phase 3 — Domain Services ✅**: T15 `24626ef` · T16 `9b324eb` · T17 `99b0855` · T18 `b2124f6` · T19 `41456e0` · T20 `51cc1e1` · T21 `bb4ca8a`. 92 tests total (71 new). Decisions: T18 explicit `kind:'stdio'|'remote'` discriminator; T16 self-generates token inline (file-ownership boundary vs T19).
+- **Phase 4 — Live Gateway ✅**: T22 `f22393f` (spike: token readable) · T23 `9160a30` · T24 `707dd2c` · T25 `96faaea` · T54 `ff6ca4d` · T26 `28dad42` · T27 `5a4536d` · T28 `5b309ef` · T29 `acc1f20`. 122 tests total (30 new). SDK `@1.29.0` verified against installed `.d.ts`; stateless Streamable-HTTP pattern (fresh Server per POST); `envKey` doubles as stdio env name / remote header name.
+- **Phase 5 — Config Writers ✅**: T30 `2cb9ad3` · T31 `c685c4a` · T32 `20e2b17` · T33 `f9342d4` · T34 `4797e26`. 139 tests total (17 new). `gatewayBaseUrl` threaded as parameter (env.ts untouched); managed-block preserves user's other `mcpServers` entries.
+- **Phase 6 — API & Web UI** (split for context hygiene):
+  - **6a — API layer ✅** (T55, T36–T46): `686cf4d` `235bb9c` `868a6f9` `373602e` `f23a900` `1085974` `3e02631` `639faa9` `eb1dab3` `c244c03` `6ce0584` `4b1c9f5`. 196 tests total (57 new). `create-app` factory + supertest harness; env extended with `MCP_MANAGER_PUBLIC_BASE_URL`.
+  - **6b — Web UI + final assembly ✅** (T47–T53, T56): T47 `1146f28` · T48 `831383d` · T49 `9136f8c` · T50 `e574553` · T51 `2707b80` · T52 `1325851` · T53 `d9f8b79` · T56 `81ba202`. 198 tests total. `build:web` ok; migrations copied into `dist` (carry-forward closed); real server boot smoke 200 OK.
+- **Verifier ✅ PASS** — 15/15 P1 ACs covered (evidence-or-zero), 9/9 mutations killed, gate green (198), tree clean. Report: `validation.md`. 5 non-blocking spec-precision gaps recorded (see below).
 
 ---
 

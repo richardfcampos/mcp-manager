@@ -24,11 +24,13 @@ Memória do projeto: decisões arquiteturais (AD-NNN) + snapshot de handoff.
 
 ## Handoff
 
-- **Fase atual:** Tasks **gerado** (tasks.md, 55 tasks / 6 fases), aguardando aprovação. Próximo: Execute.
+- **Fase atual:** ✅ **FEATURE COMPLETA** — Execute (55 tasks, 56 commits em `feat/mcp-gateway-mvp`) + **Verifier PASS** (15/15 ACs, 9/9 mutantes mortos, 198 testes, tree limpo). `validation.md` escrito. Servidor único sobe de verdade (smoke 200). MVP P1 entregue.
+- **Aberto (P2, não-bloqueante):** (1) mecanismo dos 4 perfis Claude Desktop (`claude`,`claude-pessoal`,`claude-3`,`claude-jet`) — só 2 data-dirs no disco; (2) 5 gaps de precisão do spec (redação, não código) em validation.md; (3) opcional: teste de multiplicidade MCP-01 (2+ secrets). Decisões de push/PR pendentes do usuário.
+- **Carry-forward:** copiar `.sql` de migration pro `dist/db/migrations/` na imagem Docker (tsc não copia assets) — resolver na Fase 6/T56.
 - **Feature:** `mcp-gateway-manager`
 - **Repo:** `/Volumes/External Code/INTEL/Code/personal/mcp-manager` (git remoto: `git@github.com:richardfcampos/mcp-manager.git`, ainda vazio)
 - **tasks.md:** gerado via workflow (6 autores ∥ → síntese → crítico adversarial, 2 iters). Checagens: 0 ciclos, 15/15 IDs P1 cobertos, 0 violação de co-locação. Fix aplicado: T43→T44/T45/T46 (rota actions).
 - **Fases:** P1 Scaffold+Docker(T1–T10) · P2 Store+Vault(T11–T14) · P3 Domínios(T15–T21) · P4 Gateway(T22–T29,T54; sequencial; T22=spike token) · P5 Writers(T30–T34; sequencial) · P6 API+UI(T36–T53,T55,T56; sequencial).
-- **Próximo passo:** aprovar tasks + escolher modo de execução (sub-agentes 1/fase vs inline) → Execute com Verifier ao final.
+- **Próximo passo:** despachar workers das fases 2→6 em sequência → Verifier automático ao final. HOST bind refinado (env-overridable; localhost-only via compose publish) — ver design.md Tech Decisions.
 - **Pendências P2:** mecanismo dos 4 perfis Claude Desktop (`claude`,`claude-pessoal`,`claude-3`,`claude-jet`) — só 2 data-dirs no disco (`Claude`,`Claude-3p`); resolver antes do writer Desktop.
 - **Pesquisa:** `research/researcher-01..04-*.md`.
