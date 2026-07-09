@@ -70,10 +70,12 @@
 
 | ID | Story | Status |
 | -- | ----- | ------ |
-| CFG-C1..C4 | Cursor writer | Pending |
-| CFG-V1..V2 | VS Code writer | Pending |
-| CFG-D1..D3 | Dispatch por formato | Pending |
-| FMT-1..3 | API + UI de seleção | Pending |
+| CFG-C1..C4 | Cursor writer | ✅ Done (`33bff85`) |
+| CFG-V1..V2 | VS Code writer | ✅ Done (`46ef71e`) |
+| CFG-D1..D3 | Dispatch por formato | ✅ Done (`31422e2`) |
+| FMT-1..3 | API + UI de seleção | ✅ Done (`618bd32` API, `63b8008` UI) |
+
+**Resultado:** 217 testes verdes (18 novos), 0 regressão. Suite completo re-rodado independente.
 
 ## Success Criteria
 
