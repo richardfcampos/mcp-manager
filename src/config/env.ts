@@ -26,6 +26,13 @@ export interface AppConfig {
   workspaceRoot: string;
   /** 32-byte AES-256-GCM master key used by the secret vault. */
   masterKey: Buffer;
+  /** Host-reachable base URL for the gateway (e.g. what a client outside the
+   * container/loopback can actually reach), used to render `/mcp/<token>`
+   * URLs into every written client config. Defaults to the loopback bind
+   * address + port, which is only correct for same-host clients -- deployments
+   * exposing the gateway differently (a reverse proxy, a different published
+   * port) must set MCP_MANAGER_PUBLIC_BASE_URL explicitly. */
+  publicBaseUrl: string;
 }
 
 /** Minimal shape of the env vars this loader reads; kept structural so callers
@@ -41,12 +48,14 @@ export function loadConfig(env: EnvSource): AppConfig {
   const masterKey = parseMasterKey(env.MCP_MANAGER_MASTER_KEY);
   const workspaceRoot = resolveWorkspaceRoot(env.MCP_MANAGER_WORKSPACE_ROOT);
   const port = parsePort(env.PORT);
+  const host = env.HOST || DEFAULT_HOST;
 
   return {
     port,
-    host: env.HOST || DEFAULT_HOST,
+    host,
     workspaceRoot,
     masterKey,
+    publicBaseUrl: env.MCP_MANAGER_PUBLIC_BASE_URL || `http://127.0.0.1:${port}`,
   };
 }
 
