@@ -1,0 +1,22 @@
+services:
+  mcp-manager:
+    build: .
+    image: mcp-manager
+    restart: unless-stopped
+    environment:
+      MCP_MANAGER_MASTER_KEY: ${MCP_MANAGER_MASTER_KEY:?set MCP_MANAGER_MASTER_KEY in .env, see .env.example}
+      # Mounted at the same absolute path on both sides (see volumes below)
+      # so env.ts's existence check validates the exact path it receives,
+      # with no host/container path translation to keep in sync.
+      MCP_MANAGER_WORKSPACE_ROOT: ${MCP_MANAGER_WORKSPACE_ROOT:?set MCP_MANAGER_WORKSPACE_ROOT in .env, see .env.example}
+      PORT: ${PORT:-3000}
+    ports:
+      # Host-side restriction to loopback: this is the real "never leaves
+      # localhost" boundary (see Dockerfile's HOST=0.0.0.0 comment).
+      - '127.0.0.1:${PORT:-3000}:${PORT:-3000}'
+    volumes:
+      - ${MCP_MANAGER_WORKSPACE_ROOT}:${MCP_MANAGER_WORKSPACE_ROOT}
+      - mcp-manager-data:/app/data
+
+volumes:
+  mcp-manager-data:
