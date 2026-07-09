@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createServer,
+  deleteServerAndRewriteConfigs,
   getServer,
   listServers,
   updateServer,
@@ -73,8 +74,8 @@ function parseUpdateInput(body: unknown): UpdateServerInput {
   };
 }
 
-/** MCP-01/02/03, SEC-01: create/update/list/detail for registered MCP
- * servers. Extended in place by T39 (delete). */
+/** MCP-01/02/03, SEC-01, ACC-02: create/update/list/detail/delete for
+ * registered MCP servers. */
 export function createMcpServersRoute(deps: AppDeps): Router {
   const router = Router();
   const serviceDeps = { db: deps.db, masterKey: deps.masterKey };
@@ -113,6 +114,25 @@ export function createMcpServersRoute(deps: AppDeps): Router {
       return;
     }
     res.status(200).json(server);
+  });
+
+  // ACC-02: captures the MCP's consumers, cascades their assignment rows,
+  // deletes the server, and rewrites every affected consumer's config in
+  // one call (see deleteServerAndRewriteConfigs).
+  router.delete('/:id', async (req, res, next) => {
+    try {
+      const existing = getServer(serviceDeps, req.params.id);
+      if (!existing) {
+        throw new NotFoundError(`No MCP server found with id: ${req.params.id}`);
+      }
+      const configRewrites = await deleteServerAndRewriteConfigs(
+        { db: deps.db, masterKey: deps.masterKey, gatewayBaseUrl: deps.gatewayBaseUrl },
+        req.params.id,
+      );
+      res.status(200).json({ deleted: true, configRewrites });
+    } catch (err) {
+      next(classifyDomainError(err));
+    }
   });
 
   return router;
