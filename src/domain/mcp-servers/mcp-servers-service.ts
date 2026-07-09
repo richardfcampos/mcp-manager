@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { rewriteConfigsForConsumers } from '../../config-writers/config-rewrite-service.js';
+import type { WriteConfigResult } from '../../config-writers/writer-interface.js';
 import { generateId, nowIso } from '../../db/repository-helpers.js';
 import { sealSecret } from '../../vault/secret-vault.js';
 import * as assignmentsRepository from '../assignments/assignments-repository.js';
@@ -10,6 +12,13 @@ export interface McpServersServiceDeps {
   /** 32-byte AES-256-GCM master key from config/env.ts, used to seal every
    * secret env value before it ever reaches the repository/insert path. */
   masterKey: Buffer;
+}
+
+export interface DeleteServerWithConfigRewriteDeps extends McpServersServiceDeps {
+  /** Reachable base for the gateway (host-published address, e.g.
+   * `http://127.0.0.1:<port>`) -- passed through untouched to the
+   * config-rewrite orchestrator; never read from env here. */
+  gatewayBaseUrl: string;
 }
 
 export interface ServiceSecretInput {
@@ -183,4 +192,25 @@ export async function deleteServer(
   assignmentsRepository.deleteByMcpId(deps.db, id);
   mcpServersRepository.deleteServer(deps.db, id);
   await onConsumersAffected(consumerIds);
+}
+
+/** ACC-02 end-to-end: deletes the MCP server (see deleteServer above --
+ * consumer ids are captured BEFORE the assignment cascade) and wires its
+ * injected rewrite hook to the real config-rewrite orchestrator, so every
+ * affected consumer's native client config is rewritten (managed entry
+ * updated or removed) in the same call. This is the production entry point
+ * the API delete route uses; deleteServer itself stays hook-injectable for
+ * callers (like tests) that don't need the filesystem side effect. */
+export async function deleteServerAndRewriteConfigs(
+  deps: DeleteServerWithConfigRewriteDeps,
+  id: string,
+): Promise<WriteConfigResult[]> {
+  let results: WriteConfigResult[] = [];
+  await deleteServer(deps, id, async (consumerIds) => {
+    results = await rewriteConfigsForConsumers(
+      { db: deps.db, gatewayBaseUrl: deps.gatewayBaseUrl },
+      consumerIds,
+    );
+  });
+  return results;
 }
