@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type Database from 'better-sqlite3';
 import type { UpstreamRegistry } from '../gateway/upstream-registry.js';
+import { createConsumersRoute } from './consumers-routes.js';
 import { createHealthRoute } from './health-route.js';
 import { createMcpServersRoute } from './mcp-servers-routes.js';
 
@@ -33,6 +34,7 @@ export function createApiRouter(deps: AppDeps): Router {
 
   router.use(createHealthRoute());
   router.use('/mcp-servers', createMcpServersRoute(deps));
+  router.use('/consumers', createConsumersRoute(deps));
 
   return router;
 }
