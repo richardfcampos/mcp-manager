@@ -1,15 +1,26 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-/** Gateway + UI always bind to loopback only; never configurable to 0.0.0.0. */
-const LOOPBACK_HOST = '127.0.0.1';
+/**
+ * Default bind host: loopback-only, so running the server directly on a
+ * host machine never exposes the unauthenticated local UI/API to the LAN.
+ *
+ * Not part of the documented MCP_MANAGER_* env contract (see .env.example):
+ * this is internal deployment plumbing, not a user-facing setting. The only
+ * legitimate reason to override it is Docker's bridge network, where a
+ * container process bound to its own loopback is unreachable through the
+ * container's published port — the Dockerfile sets HOST=0.0.0.0 for that
+ * case, while the actual "never leaves localhost" guarantee is enforced one
+ * layer out, by docker-compose publishing the port on 127.0.0.1 only.
+ */
+const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 3000;
 const MASTER_KEY_BYTES = 32;
 
 export interface AppConfig {
   /** Bind port for the Express server (API + gateway + static SPA). */
   port: number;
-  /** Bind host; always loopback, never read from env. */
+  /** Bind host; defaults to loopback, see DEFAULT_HOST for override rules. */
   host: string;
   /** Absolute path to the mounted workspace root used for project discovery. */
   workspaceRoot: string;
@@ -33,7 +44,7 @@ export function loadConfig(env: EnvSource): AppConfig {
 
   return {
     port,
-    host: LOOPBACK_HOST,
+    host: env.HOST || DEFAULT_HOST,
     workspaceRoot,
     masterKey,
   };

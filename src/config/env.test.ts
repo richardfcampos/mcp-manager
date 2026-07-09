@@ -62,7 +62,7 @@ describe('loadConfig', () => {
     expect(withDefault.workspaceRoot).toBe(resolve(process.cwd()));
   });
 
-  it('exposes a loopback bind host and a default port, ignoring any HOST override', () => {
+  it('defaults to a loopback bind host and a default port; PORT/HOST are both overridable', () => {
     const workspaceRoot = makeTempWorkspace();
 
     const withDefaults = loadConfig({
@@ -72,6 +72,10 @@ describe('loadConfig', () => {
     expect(withDefaults.port).toBe(3000);
     expect(withDefaults.host).toBe('127.0.0.1');
 
+    // HOST=0.0.0.0 is only ever set internally by the Dockerfile (container
+    // bridge networking); the real "never leaves localhost" guarantee is
+    // enforced one layer out, by docker-compose publishing the port on
+    // 127.0.0.1 only.
     const withOverrides = loadConfig({
       MCP_MANAGER_MASTER_KEY: validMasterKey,
       MCP_MANAGER_WORKSPACE_ROOT: workspaceRoot,
@@ -79,6 +83,6 @@ describe('loadConfig', () => {
       HOST: '0.0.0.0',
     });
     expect(withOverrides.port).toBe(4100);
-    expect(withOverrides.host).toBe('127.0.0.1');
+    expect(withOverrides.host).toBe('0.0.0.0');
   });
 });
