@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import {
   createServer,
+  getServer,
+  listServers,
   updateServer,
   type CreateServerInput,
   type ServiceSecretInput,
   type UpdateServerInput,
 } from '../domain/mcp-servers/mcp-servers-service.js';
-import { ValidationError, classifyDomainError } from './error-middleware.js';
+import { NotFoundError, ValidationError, classifyDomainError } from './error-middleware.js';
 import type { AppDeps } from './router.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,8 +73,8 @@ function parseUpdateInput(body: unknown): UpdateServerInput {
   };
 }
 
-/** MCP-01/02/03: create/update for registered MCP servers. Extended in
- * place by T38 (list/detail) and T39 (delete). */
+/** MCP-01/02/03, SEC-01: create/update/list/detail for registered MCP
+ * servers. Extended in place by T39 (delete). */
 export function createMcpServersRoute(deps: AppDeps): Router {
   const router = Router();
   const serviceDeps = { db: deps.db, masterKey: deps.masterKey };
@@ -95,6 +97,22 @@ export function createMcpServersRoute(deps: AppDeps): Router {
     } catch (err) {
       next(classifyDomainError(err));
     }
+  });
+
+  // SEC-01: listServers/getServer already return only per-envKey hasValue
+  // flags (see mcp-servers-repository.ts) -- never plaintext or ciphertext,
+  // so no extra sanitization is needed at the route layer.
+  router.get('/', (_req, res) => {
+    res.status(200).json(listServers(serviceDeps));
+  });
+
+  router.get('/:id', (req, res, next) => {
+    const server = getServer(serviceDeps, req.params.id);
+    if (!server) {
+      next(new NotFoundError(`No MCP server found with id: ${req.params.id}`));
+      return;
+    }
+    res.status(200).json(server);
   });
 
   return router;
