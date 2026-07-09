@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getConsumer } from '../domain/consumers/consumers-repository.js';
 import { listConsumers, rotateToken } from '../domain/consumers/consumers-service.js';
+import { listServers } from '../domain/mcp-servers/mcp-servers-service.js';
 import { rewriteConfigsForConsumers } from '../config-writers/config-rewrite-service.js';
 import { NotFoundError, ValidationError, classifyDomainError } from './error-middleware.js';
 import type { AppDeps } from './router.js';
@@ -11,8 +12,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** CFG-01/02: writes every assigned project's native client config
  * (.mcp.json today), idempotently, isolating per-project failures; plus
- * per-consumer token rotation (SEC-03). Extended in place by T45 (status)
- * and T46 (preview). */
+ * per-consumer token rotation (SEC-03) and per-MCP upstream status.
+ * Extended in place by T46 (preview). */
 export function createActionsRoute(deps: AppDeps): Router {
   const router = Router();
 
@@ -57,6 +58,20 @@ export function createActionsRoute(deps: AppDeps): Router {
     } catch (err) {
       next(classifyDomainError(err));
     }
+  });
+
+  // Enumerates EVERY registered MCP (the full catalog via listServers, not
+  // only ids the lazy upstream registry has already connected) and reports
+  // each one's live status; an MCP never connected defaults to 'stopped'
+  // (see UpstreamRegistry.status), so nothing is ever silently omitted.
+  router.get('/status', (_req, res) => {
+    const servers = listServers({ db: deps.db, masterKey: deps.masterKey });
+    const statuses = servers.map((server) => ({
+      mcpId: server.id,
+      slug: server.slug,
+      status: deps.upstreamRegistry.status(server.id),
+    }));
+    res.status(200).json({ statuses });
   });
 
   return router;
