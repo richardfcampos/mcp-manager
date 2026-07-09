@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { discoverConsumers, listConsumers, registerProjectConsumer } from '../api-client.js';
 import type { Consumer } from '../api-types.js';
+import FormatSelector from './format-selector.js';
 
 /** Lists discovered + manually-registered consumers (PRJ-01/02/03) with a
  * rescan action (workspace auto-discovery) and manual project registration. */
@@ -98,6 +99,7 @@ export default function ConsumersList(): React.JSX.Element {
               <th>Type</th>
               <th>Path</th>
               <th>Status</th>
+              <th>Formats</th>
             </tr>
           </thead>
           <tbody>
@@ -111,6 +113,13 @@ export default function ConsumersList(): React.JSX.Element {
                     {consumer.available ? 'available' : 'unavailable'}
                   </span>
                   <span className="text-slate-400">{consumer.discovered ? 'discovered' : 'manual'}</span>
+                </td>
+                <td>
+                  {consumer.type === 'project' ? (
+                    <FormatSelector consumer={consumer} onChange={refresh} />
+                  ) : (
+                    <span className="text-xs text-slate-300">n/a</span>
+                  )}
                 </td>
               </tr>
             ))}

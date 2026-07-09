@@ -1,5 +1,6 @@
 import type {
   AssignmentMatrix,
+  ClientFormat,
   Consumer,
   CreateMcpServerInput,
   McpServer,
@@ -84,6 +85,15 @@ export function registerDesktopProfileConsumer(dataDir: string, label: string): 
   return apiFetch('/consumers/desktop-profile', {
     method: 'POST',
     body: JSON.stringify({ dataDir, label }),
+  });
+}
+
+/** FMT-1/FMT-3: sets which native client config formats get written for a
+ * consumer on the next write-configs run; returns the updated consumer. */
+export function setConsumerFormats(id: string, clientFormats: ClientFormat[]): Promise<Consumer> {
+  return apiFetch(`/consumers/${id}/formats`, {
+    method: 'PUT',
+    body: JSON.stringify({ clientFormats }),
   });
 }
 
