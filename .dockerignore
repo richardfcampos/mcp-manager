@@ -1,0 +1,14 @@
+node_modules
+.git
+dist
+web/dist
+web/node_modules
+test
+.specs
+plans
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+*.log
+.DS_Store
