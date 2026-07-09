@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import type Database from 'better-sqlite3';
 import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
 import { insertConsumer } from '../domain/consumers/consumers-repository.js';
+import type { ClientFormat } from '../domain/consumers/consumer-types.js';
 import { insertServer } from '../domain/mcp-servers/mcp-servers-repository.js';
 import { assign, unassign } from '../domain/assignments/assignments-repository.js';
 import {
@@ -13,6 +14,7 @@ import {
   type ConfigRewriteServiceDeps,
 } from './config-rewrite-service.js';
 import { writeConfig as writeClaudeCodeConfig } from './claude-code-writer.js';
+import { writeConfig as writeVscodeConfig } from './vscode-writer.js';
 import { MANAGED_KEY } from './managed-block.js';
 import type { ConfigWriter } from './writer-interface.js';
 
@@ -24,7 +26,12 @@ function migratedDb(): Database.Database {
   return db;
 }
 
-function seedProjectConsumer(db: Database.Database, id: string, path: string) {
+function seedProjectConsumer(
+  db: Database.Database,
+  id: string,
+  path: string,
+  clientFormats: ClientFormat[] = [],
+) {
   mkdirSync(path, { recursive: true });
   return insertConsumer(db, {
     id,
@@ -32,6 +39,7 @@ function seedProjectConsumer(db: Database.Database, id: string, path: string) {
     name: id,
     path,
     token: `tok-${id}`,
+    clientFormats,
     createdAt: new Date().toISOString(),
   });
 }
@@ -171,5 +179,70 @@ describe('config-rewrite-service', () => {
     const results = await rewriteConfigsForConsumers(deps, ['missing-consumer', 'desktop-1']);
 
     expect(results).toEqual([]);
+  });
+
+  it('CFG-D1: clientFormats=[cursor] writes only the cursor config, not claude-code or vscode', async () => {
+    const db = migratedDb();
+    const path = join(root, 'project-cursor-only');
+    seedProjectConsumer(db, 'consumer-cursor', path, ['cursor']);
+    seedMcp(db, 'mcp-1');
+    assign(db, 'consumer-cursor', 'mcp-1');
+
+    const deps: ConfigRewriteServiceDeps = { db, gatewayBaseUrl: GATEWAY_BASE_URL };
+    const results = await rewriteConfigsForConsumers(deps, ['consumer-cursor']);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ format: 'cursor', status: 'written' });
+    expect(existsSync(join(path, '.cursor', 'mcp.json'))).toBe(true);
+    expect(existsSync(join(path, '.mcp.json'))).toBe(false);
+    expect(existsSync(join(path, '.vscode', 'mcp.json'))).toBe(false);
+  });
+
+  it('CFG-D2: an empty clientFormats defaults to [claude-code] (retro-compat)', async () => {
+    const db = migratedDb();
+    const path = join(root, 'project-default-format');
+    seedProjectConsumer(db, 'consumer-default', path); // clientFormats defaults to []
+    seedMcp(db, 'mcp-1');
+    assign(db, 'consumer-default', 'mcp-1');
+
+    const deps: ConfigRewriteServiceDeps = { db, gatewayBaseUrl: GATEWAY_BASE_URL };
+    const results = await rewriteConfigsForConsumers(deps, ['consumer-default']);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ format: 'claude-code', status: 'written' });
+  });
+
+  it('CFG-D3: clientFormats with all three writes all three files; one failing format does not abort the others', async () => {
+    const db = migratedDb();
+    const path = join(root, 'project-all-formats');
+    seedProjectConsumer(db, 'consumer-all', path, ['claude-code', 'cursor', 'vscode']);
+    seedMcp(db, 'mcp-1');
+    assign(db, 'consumer-all', 'mcp-1');
+
+    const throwingCursorWriter: ConfigWriter = {
+      async writeConfig() {
+        throw new Error('simulated cursor failure');
+      },
+    };
+
+    const deps: ConfigRewriteServiceDeps = {
+      db,
+      gatewayBaseUrl: GATEWAY_BASE_URL,
+      writers: {
+        'claude-code': { writeConfig: writeClaudeCodeConfig },
+        cursor: throwingCursorWriter,
+        vscode: { writeConfig: writeVscodeConfig },
+      },
+    };
+    const results = await rewriteConfigsForConsumers(deps, ['consumer-all']);
+
+    expect(results).toHaveLength(3);
+    expect(results.map((r) => r.format).sort()).toEqual(['claude-code', 'cursor', 'vscode']);
+    const cursorResult = results.find((r) => r.format === 'cursor')!;
+    expect(cursorResult.status).toBe('error');
+    expect(cursorResult.error).toContain('simulated cursor failure');
+    expect(results.filter((r) => r.status === 'written')).toHaveLength(2);
+    expect(existsSync(join(path, '.mcp.json'))).toBe(true);
+    expect(existsSync(join(path, '.vscode', 'mcp.json'))).toBe(true);
   });
 });

@@ -3,16 +3,25 @@ import * as assignmentsRepository from '../domain/assignments/assignments-reposi
 import * as consumersRepository from '../domain/consumers/consumers-repository.js';
 import type { ClientFormat, ConsumerRecord } from '../domain/consumers/consumer-types.js';
 import * as claudeCodeWriter from './claude-code-writer.js';
+import * as cursorWriter from './cursor-writer.js';
+import * as vscodeWriter from './vscode-writer.js';
 import type { ConfigWriter, WriteConfigResult } from './writer-interface.js';
 
 /**
- * Writer registry keyed by client format. Claude Code is the only P1
- * writer (cursor/vscode/desktop-profile shims are P2 additions of the same
- * `ConfigWriter` shape, added here when they land).
+ * Writer registry keyed by client format (desktop-profile shims are a
+ * separate P2 addition of the same `ConfigWriter` shape, added here when
+ * they land).
  */
 const DEFAULT_WRITERS: Partial<Record<ClientFormat, ConfigWriter>> = {
   'claude-code': claudeCodeWriter,
+  cursor: cursorWriter,
+  vscode: vscodeWriter,
 };
+
+/** CFG-D2: retro-compat default when a consumer has no explicit
+ * clientFormats selected -- preserves the P1 behavior where every
+ * discovered/registered project got its Claude Code config written. */
+const DEFAULT_CLIENT_FORMATS: ClientFormat[] = ['claude-code'];
 
 export interface ConfigRewriteServiceDeps {
   db: Database.Database;
@@ -24,19 +33,24 @@ export interface ConfigRewriteServiceDeps {
 }
 
 /**
- * CFG-02: rewrites the native client config(s) for each given consumer.
+ * CFG-D1..D3: rewrites the native client config(s) for each given consumer.
  * Per consumer, resolves its current `allowedMcpIds` scope (0 assignments
  * still triggers a writeConfig call so the writer can clean up its managed
- * entry) and dispatches to every writer registered for the consumer.
+ * entry) and dispatches only to the writers matching the consumer's own
+ * `clientFormats` selection -- NOT every registered writer. An empty
+ * `clientFormats` (never explicitly set) defaults to `['claude-code']` for
+ * retro-compatibility with P1-registered/discovered projects (CFG-D2). A
+ * format with no matching entry in the writer registry is silently skipped
+ * (e.g. a stale/unsupported format value).
  *
  * Only `project` consumers are dispatched to a writer today -- Claude
  * Desktop profiles get their `mcpServers` shim block from a P2 writer that
  * doesn't exist yet, so a desktop-profile consumer intentionally produces
- * no results here rather than being (incorrectly) handed to the Claude
- * Code `.mcp.json` writer.
+ * no results here rather than being (incorrectly) handed to a project
+ * config writer.
  *
- * Each writer call is isolated in try/catch so one consumer's failure
- * never aborts the batch; the `ConfigWriter` contract itself already
+ * Each writer call is isolated in try/catch so one format's failure never
+ * aborts the batch (CFG-D3); the `ConfigWriter` contract itself already
  * returns `status:'error'` instead of throwing, so this catch is a
  * defense-in-depth guard against a writer that violates that contract.
  */
@@ -56,7 +70,10 @@ export async function rewriteConfigsForConsumers(
     const hasAssignments =
       assignmentsRepository.allowedMcpIds(deps.db, consumerId).length > 0;
 
-    for (const format of Object.keys(writers) as ClientFormat[]) {
+    const formats =
+      consumer.clientFormats.length > 0 ? consumer.clientFormats : DEFAULT_CLIENT_FORMATS;
+
+    for (const format of formats) {
       const writer = writers[format];
       if (!writer) {
         continue;
