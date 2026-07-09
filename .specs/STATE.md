@@ -25,7 +25,9 @@ Memória do projeto: decisões arquiteturais (AD-NNN) + snapshot de handoff.
 ## Handoff
 
 - **Fase atual:** ✅ **FEATURE COMPLETA** — Execute (55 tasks, 56 commits em `feat/mcp-gateway-mvp`) + **Verifier PASS** (15/15 ACs, 9/9 mutantes mortos, 198 testes, tree limpo). `validation.md` escrito. Servidor único sobe de verdade (smoke 200). MVP P1 entregue.
-- **Aberto (P2, não-bloqueante):** (1) mecanismo dos 4 perfis Claude Desktop (`claude`,`claude-pessoal`,`claude-3`,`claude-jet`) — só 2 data-dirs no disco; (2) 5 gaps de precisão do spec (redação, não código) em validation.md; (3) opcional: teste de multiplicidade MCP-01 (2+ secrets). Decisões de push/PR pendentes do usuário.
+- **Pós-entrega:** P1 polido (teste multiplicidade MCP-01 `3c8c580`, clarificação de spec `339f6ea`); **PR pulado** (escolha do usuário — `feat/mcp-gateway-mvp` é a branch default do remoto com todo o código); **verificado rodando de verdade** no Docker: `/api/*` JSON, gateway 401 em token inválido, descoberta achou os 9 projetos com token cada. 202 testes.
+- **Lição operacional (README `04c1512`):** `docker compose up` reusa a imagem cacheada `mcp-manager` (a Fase 1/T8 tagueou cedo, com placeholder T6) → sempre `docker compose up --build` após mudança de código. Um `up` sem `--build` rodou código obsoleto e simulou um "bug de produção" que não existia.
+- **P2 (próximo ciclo, escolha do usuário):** (1) **BLOQUEADOR** — mecanismo dos 4 perfis Claude Desktop (`claude`,`claude-pessoal`,`claude-3`,`claude-jet`): só 2 data-dirs no disco (`Claude`,`Claude-3p`); precisa do usuário explicar como lança os 4; (2) writers Cursor `.cursor/mcp.json` + VS Code `.vscode/mcp.json` (desbloqueados, análogos ao Claude Code); (3) 5 gaps de precisão do spec em validation.md (redação).
 - **Carry-forward:** copiar `.sql` de migration pro `dist/db/migrations/` na imagem Docker (tsc não copia assets) — resolver na Fase 6/T56.
 - **Feature:** `mcp-gateway-manager`
 - **Repo:** `/Volumes/External Code/INTEL/Code/personal/mcp-manager` (git remoto: `git@github.com:richardfcampos/mcp-manager.git`, ainda vazio)
