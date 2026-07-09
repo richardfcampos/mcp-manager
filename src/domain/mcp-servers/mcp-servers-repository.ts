@@ -1,0 +1,174 @@
+import type Database from 'better-sqlite3';
+import { generateId, parseJson, serializeJson, withTransaction } from '../../db/repository-helpers.js';
+import type {
+  InsertServerInput,
+  McpServerListItem,
+  McpServerRecord,
+  McpTransport,
+  SealedSecretRow,
+  UpdateServerInput,
+} from './mcp-server-types.js';
+
+interface McpServerRow {
+  id: string;
+  slug: string;
+  name: string;
+  transport: string;
+  command: string | null;
+  args: string | null;
+  url: string | null;
+  headers: string | null;
+  created_at: string;
+}
+
+interface SecretRow {
+  id: string;
+  mcp_server_id: string;
+  env_key: string;
+  iv: string;
+  tag: string;
+  ciphertext: string;
+}
+
+function mapServerRow(row: McpServerRow): McpServerRecord {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    transport: row.transport as McpTransport,
+    command: row.command,
+    args: parseJson<string[]>(row.args),
+    url: row.url,
+    headers: parseJson<Record<string, string>>(row.headers),
+    createdAt: row.created_at,
+  };
+}
+
+function insertSecretRows(
+  db: Database.Database,
+  mcpServerId: string,
+  secrets: InsertServerInput['secrets'],
+): void {
+  const insertSecret = db.prepare(
+    'INSERT INTO secret (id, mcp_server_id, env_key, iv, tag, ciphertext) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  for (const secret of secrets) {
+    insertSecret.run(
+      generateId(),
+      mcpServerId,
+      secret.envKey,
+      secret.iv,
+      secret.tag,
+      secret.ciphertext,
+    );
+  }
+}
+
+/** Persists a new MCP server row plus its sealed secret rows (already
+ * encrypted by the caller) inside a single transaction. */
+export function insertServer(db: Database.Database, input: InsertServerInput): void {
+  withTransaction(db, () => {
+    db.prepare(
+      `INSERT INTO mcp_server (id, slug, name, transport, command, args, url, headers, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      input.id,
+      input.slug,
+      input.name,
+      input.transport,
+      input.command ?? null,
+      serializeJson(input.args ?? null),
+      input.url ?? null,
+      serializeJson(input.headers ?? null),
+      input.createdAt,
+    );
+    insertSecretRows(db, input.id, input.secrets);
+  });
+}
+
+function secretFlags(db: Database.Database, mcpServerId: string): McpServerListItem['secrets'] {
+  const rows = db
+    .prepare('SELECT env_key FROM secret WHERE mcp_server_id = ?')
+    .all(mcpServerId) as Array<{ env_key: string }>;
+  return rows.map((row) => ({ envKey: row.env_key, hasValue: true }));
+}
+
+/** Returns server metadata plus per-envKey hasValue flags only -- never
+ * plaintext, never ciphertext (SEC-01). */
+export function getServer(db: Database.Database, id: string): McpServerListItem | null {
+  const row = db.prepare('SELECT * FROM mcp_server WHERE id = ?').get(id) as
+    | McpServerRow
+    | undefined;
+  if (!row) {
+    return null;
+  }
+  return { ...mapServerRow(row), secrets: secretFlags(db, id) };
+}
+
+/** Lists every server's metadata plus per-envKey hasValue flags only --
+ * never plaintext, never ciphertext (SEC-01). */
+export function listServers(db: Database.Database): McpServerListItem[] {
+  const rows = db.prepare('SELECT * FROM mcp_server ORDER BY created_at').all() as McpServerRow[];
+  return rows.map((row) => ({ ...mapServerRow(row), secrets: secretFlags(db, row.id) }));
+}
+
+/** Updates the provided fields; when `secrets` is present the entire secret
+ * row set for the server is replaced (old rows deleted, new rows inserted). */
+export function updateServer(db: Database.Database, id: string, input: UpdateServerInput): void {
+  withTransaction(db, () => {
+    const current = db.prepare('SELECT * FROM mcp_server WHERE id = ?').get(id) as
+      | McpServerRow
+      | undefined;
+    if (!current) {
+      throw new Error(`No MCP server found with id: ${id}`);
+    }
+
+    db.prepare(
+      `UPDATE mcp_server SET name = ?, command = ?, args = ?, url = ?, headers = ? WHERE id = ?`,
+    ).run(
+      input.name ?? current.name,
+      input.command !== undefined ? input.command : current.command,
+      input.args !== undefined ? serializeJson(input.args) : current.args,
+      input.url !== undefined ? input.url : current.url,
+      input.headers !== undefined ? serializeJson(input.headers) : current.headers,
+      id,
+    );
+
+    if (input.secrets) {
+      db.prepare('DELETE FROM secret WHERE mcp_server_id = ?').run(id);
+      insertSecretRows(db, id, input.secrets);
+    }
+  });
+}
+
+/** Removes the server row and all of its secret rows. */
+export function deleteServer(db: Database.Database, id: string): void {
+  withTransaction(db, () => {
+    db.prepare('DELETE FROM secret WHERE mcp_server_id = ?').run(id);
+    db.prepare('DELETE FROM mcp_server WHERE id = ?').run(id);
+  });
+}
+
+/** Bare server row (no secret flags) for existence/duplicate-name checks. */
+export function findByName(db: Database.Database, name: string): McpServerRecord | null {
+  const row = db.prepare('SELECT * FROM mcp_server WHERE name = ?').get(name) as
+    | McpServerRow
+    | undefined;
+  return row ? mapServerRow(row) : null;
+}
+
+/** Raw sealed {envKey,iv,tag,ciphertext} rows for the resolver/decrypt path
+ * (T54) -- never exposed via listServers/getServer. */
+export function listSealedSecrets(db: Database.Database, mcpServerId: string): SealedSecretRow[] {
+  const rows = db
+    .prepare('SELECT * FROM secret WHERE mcp_server_id = ?')
+    .all(mcpServerId) as SecretRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    mcpServerId: row.mcp_server_id,
+    envKey: row.env_key,
+    iv: row.iv,
+    tag: row.tag,
+    ciphertext: row.ciphertext,
+  }));
+}
