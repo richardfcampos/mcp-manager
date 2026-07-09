@@ -1,8 +1,14 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Router } from 'express';
+import { allowedMcpIds } from '../domain/assignments/assignments-service.js';
 import { getConsumer } from '../domain/consumers/consumers-repository.js';
 import { listConsumers, rotateToken } from '../domain/consumers/consumers-service.js';
+import type { ConsumerRecord } from '../domain/consumers/consumer-types.js';
 import { listServers } from '../domain/mcp-servers/mcp-servers-service.js';
 import { rewriteConfigsForConsumers } from '../config-writers/config-rewrite-service.js';
+import { MANAGED_KEY, mergeManagedEntries, removeManagedEntries } from '../config-writers/managed-block.js';
+import type { ManagedEntry } from '../config-writers/writer-interface.js';
 import { NotFoundError, ValidationError, classifyDomainError } from './error-middleware.js';
 import type { AppDeps } from './router.js';
 
@@ -10,10 +16,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Read-only mirror of claude-code-writer's read+merge+serialize steps
+ * (see src/config-writers/claude-code-writer.ts), stopping short of the
+ * actual `writeFileSync` -- reuses the same managed-block merge helpers so
+ * the previewed content matches exactly what a real write would produce,
+ * without ever touching the filesystem beyond a read. */
+function renderClaudeCodePreview(
+  consumer: ConsumerRecord,
+  gatewayBaseUrl: string,
+  hasAssignments: boolean,
+): string {
+  const path = join(consumer.path, '.mcp.json');
+  const currentContent = existsSync(path) ? readFileSync(path, 'utf-8') : undefined;
+  const existing =
+    currentContent && currentContent.trim()
+      ? (JSON.parse(currentContent) as { mcpServers?: Record<string, unknown>; [key: string]: unknown })
+      : {};
+  const existingServers = existing.mcpServers ?? {};
+
+  const entry: ManagedEntry = {
+    type: 'http',
+    url: `${gatewayBaseUrl}/mcp/${consumer.token}`,
+    headers: { Authorization: `Bearer ${consumer.token}` },
+  };
+  const mcpServers = hasAssignments
+    ? mergeManagedEntries(existingServers, { [MANAGED_KEY]: entry })
+    : removeManagedEntries(existingServers, [MANAGED_KEY]);
+
+  return `${JSON.stringify({ ...existing, mcpServers }, null, 2)}\n`;
+}
+
 /** CFG-01/02: writes every assigned project's native client config
  * (.mcp.json today), idempotently, isolating per-project failures; plus
- * per-consumer token rotation (SEC-03) and per-MCP upstream status.
- * Extended in place by T46 (preview). */
+ * per-consumer token rotation (SEC-03), per-MCP upstream status, and a
+ * dry-run config preview. */
 export function createActionsRoute(deps: AppDeps): Router {
   const router = Router();
 
@@ -72,6 +108,27 @@ export function createActionsRoute(deps: AppDeps): Router {
       status: deps.upstreamRegistry.status(server.id),
     }));
     res.status(200).json({ statuses });
+  });
+
+  // Renders the config content that a write-configs call WOULD produce for
+  // this consumer, without creating or modifying any file on disk.
+  router.get('/preview', (req, res, next) => {
+    try {
+      const consumerId = typeof req.query.consumerId === 'string' ? req.query.consumerId : '';
+      if (!consumerId) {
+        throw new ValidationError('consumerId query parameter is required');
+      }
+      const consumer = getConsumer(deps.db, consumerId);
+      if (!consumer) {
+        throw new NotFoundError(`No consumer found with id: ${consumerId}`);
+      }
+
+      const hasAssignments = allowedMcpIds({ db: deps.db }, consumerId).length > 0;
+      const content = renderClaudeCodePreview(consumer, deps.gatewayBaseUrl, hasAssignments);
+      res.status(200).type('application/json').send(content);
+    } catch (err) {
+      next(classifyDomainError(err));
+    }
   });
 
   return router;
