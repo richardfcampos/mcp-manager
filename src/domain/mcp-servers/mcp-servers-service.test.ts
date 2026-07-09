@@ -49,6 +49,40 @@ describe('mcp-servers-service', () => {
     expect(openSecret(sealed[0], deps.masterKey)).toBe('shhh-secret');
   });
 
+  it('MCP-01: createServer seals EACH secret independently when multiple are provided', () => {
+    createServer(deps, {
+      name: 'Multi',
+      kind: 'stdio',
+      command: 'npx',
+      secrets: [
+        { envKey: 'TOKEN_A', value: 'value-a' },
+        { envKey: 'TOKEN_B', value: 'value-b' },
+      ],
+    });
+
+    const id = mcpServersRepository.findByName(deps.db, 'Multi')!.id;
+    const sealed = mcpServersRepository.listSealedSecrets(deps.db, id);
+    expect(sealed).toHaveLength(2);
+
+    // each sealed row decrypts back to one of the two distinct plaintexts (set is exactly both)
+    const decrypted = sealed.map((s) => openSecret(s, deps.masterKey)).sort();
+    expect(decrypted).toEqual(['value-a', 'value-b']);
+    // sealed independently: the two ciphertexts differ
+    expect(sealed[0].ciphertext).not.toBe(sealed[1].ciphertext);
+
+    // both surface only as hasValue in reads (SEC-01), never plaintext
+    const server = listServers(deps).find((s) => s.name === 'Multi')!;
+    expect(server.secrets).toHaveLength(2);
+    expect(server.secrets).toEqual(
+      expect.arrayContaining([
+        { envKey: 'TOKEN_A', hasValue: true },
+        { envKey: 'TOKEN_B', hasValue: true },
+      ]),
+    );
+    expect(JSON.stringify(server)).not.toContain('value-a');
+    expect(JSON.stringify(server)).not.toContain('value-b');
+  });
+
   it('MCP-01: createServer stdio persists command/args metadata', () => {
     const server = createServer(deps, {
       name: 'GitHub',
