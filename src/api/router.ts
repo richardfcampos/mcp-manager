@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type Database from 'better-sqlite3';
 import type { UpstreamRegistry } from '../gateway/upstream-registry.js';
 import { createHealthRoute } from './health-route.js';
+import { createMcpServersRoute } from './mcp-servers-routes.js';
 
 /**
  * Shared dependency bag threaded into every `/api/*` sub-router. Constructed
@@ -27,10 +28,11 @@ export interface AppDeps {
  * create-app. Starts with only `/health`; extended in place by later Phase 6
  * route tasks (mcp-servers, consumers, assignments, actions).
  */
-export function createApiRouter(_deps: AppDeps): Router {
+export function createApiRouter(deps: AppDeps): Router {
   const router = Router();
 
   router.use(createHealthRoute());
+  router.use('/mcp-servers', createMcpServersRoute(deps));
 
   return router;
 }
