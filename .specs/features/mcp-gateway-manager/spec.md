@@ -53,6 +53,11 @@ Toda ambiguidade é resolvida com você ou registrada aqui — nada fica silenci
 
 **Open questions:** none — todas as ambiguidades de comportamento foram resolvidas. Os 3 itens marcados `⚠️ Design` são detalhes de implementação (stack, algoritmo de cifra, esquema exato de transporte por cliente) a fixar no Design via docs oficiais/Context7 — não bloqueiam o spec.
 
+**Esclarecimentos de precisão (pós-Verifier, não alteram nenhum AC):**
+- **MCP-01 "secrets marcados":** o MVP **não** tem flag de "marcado" — todo secret informado em `secrets[]` é cifrado incondicionalmente antes de persistir. "Marcado" = "informado". Cobertura de multiplicidade (2+ secrets cifrados independentemente) verificada em `mcp-servers-service.test.ts`.
+- **MCP-02 "transporte = remoto":** não existe valor de enum `remoto`; um MCP com `url` mapeia para `http` (default) ou `sse` (flag). "Remoto" é o guarda-chuva de `http`/`sse`.
+- **PRJ-03 / ACC-01 / MCP-03 (integração):** mensagens de erro e status HTTP exatos das rotas de rejeição estão fixados nos testes de integração; "nada persistido" é provado na camada de domínio (unit). Detalhes em `validation.md`.
+
 ---
 
 ## Implicit-Requirement Dimensions Sweep (Complex — todas as dimensões)
