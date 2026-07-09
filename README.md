@@ -28,8 +28,12 @@ proxies only the tools it's allowed to use.
 3. **Start the gateway:**
 
    ```sh
-   docker compose up
+   docker compose up --build
    ```
+
+   > Use `--build` whenever the source has changed. The compose service pins a
+   > fixed image tag (`mcp-manager`), so a plain `docker compose up` reuses the
+   > cached image and will not pick up code changes.
 
 4. **Open the UI:** [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
