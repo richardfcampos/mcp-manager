@@ -23,6 +23,7 @@ Memória do projeto: decisões arquiteturais (AD-NNN) + snapshot de handoff.
 | AD-015 | MCPs stdio rodam via **`StdioClientTransport` do SDK** (spawna o child); imagem `node:22-slim` + `uv` copiado de `ghcr.io/astral-sh/uv` | SDK já gerencia processo; Node+Python na mesma imagem | 2026-07-09 |
 | AD-016 | **Exposição na rede** (supersede o "localhost-only" do AD-010): publica em **0.0.0.0**, porta **7788**, sem login na UI; `MCP_MANAGER_PUBLIC_BASE_URL=http://intel:7788` nos configs gravados | Usuário confirmou; alinha ao padrão dos outros projetos do workspace (todos expõem `PORT:PORT` em 0.0.0.0, sem auth). Tokens por-alvo ainda protegem o gateway; UI sem auth → só rede confiável | 2026-07-12 |
 | AD-017 | **Workspace = `/Volumes/External Code/INTEL/Code` inteiro** (12 categorias, `WORKSPACE_ROOT` + mount) + **auto-descoberta em 2 níveis marker-based** (revisa PRJ-01 de 1→2 níveis) | Usuário escolheu; projetos ficam em `Code/<categoria>/<projeto>`, não só em `personal`. Marker-based (package.json/.git/etc.) evita registrar `src/`,`dist/` de projetos de 1º nível | 2026-07-12 |
+| AD-018 | **Linguagem de design da UI = "network-ops console"**: dark grafite-verde + acento fósforo único (#9be870), Bricolage Grotesque/IBM Plex Sans/IBM Plex Mono self-hosted, densidade por divisórias hairline, primitivos em `ui-primitives.tsx` — ver `docs/design-guidelines.md` | Redesign a pedido do usuário ("melhore tudo, usabilidade e estética"); substituiu o Tailwind-default slate/blue. Futuras telas estendem esta linguagem | 2026-07-12 |
 
 ## Handoff
 
