@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createMcpServer, updateMcpServer } from '../api-client.js';
 import type { McpServer, McpServerSecretInput } from '../api-types.js';
+import { ErrorNote, cls } from './ui-primitives.js';
 
 export interface McpFormProps {
   /** When set, the form edits this existing MCP instead of creating a new
@@ -114,133 +115,170 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
   }
 
   return (
-    <form
-      onSubmit={(event) => void handleSubmit(event)}
-      className="space-y-3 rounded-lg border border-slate-200 bg-white p-4"
-    >
-      <h3 className="text-lg font-semibold text-slate-900">{mcp ? `Edit ${mcp.name}` : 'Register MCP server'}</h3>
+    <form onSubmit={(event) => void handleSubmit(event)} className="rounded-lg border border-line/10 bg-surface">
+      <header className="border-b border-line/10 px-4 py-3">
+        <h3 className="font-display text-base font-semibold tracking-tight text-ink">
+          {mcp ? `Edit ${mcp.name}` : 'Register an MCP server'}
+        </h3>
+        {!mcp && <p className="mt-0.5 text-xs text-faint">Defined once here; projects opt in via the access matrix.</p>}
+      </header>
 
-      <label className="block text-sm font-medium text-slate-700">
-        Name
-        <input
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-      </label>
-
-      {!mcp && (
-        <div className="flex gap-4 text-sm">
-          <label className="flex items-center gap-1">
-            <input type="radio" checked={kind === 'stdio'} onChange={() => setKind('stdio')} />
-            stdio
-          </label>
-          <label className="flex items-center gap-1">
-            <input type="radio" checked={kind === 'remote'} onChange={() => setKind('remote')} />
-            remote
-          </label>
-        </div>
-      )}
-
-      {kind === 'stdio' ? (
-        <>
-          <label className="block text-sm font-medium text-slate-700">
-            Command
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <label htmlFor="mcp-name" className={cls.label}>
+              Name
+            </label>
             <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
-              value={command}
-              onChange={(event) => setCommand(event.target.value)}
-              placeholder="npx"
+              id="mcp-name"
+              className={`${cls.input} mt-1`}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="github"
+              required
             />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Args (space-separated)
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
-              value={args}
-              onChange={(event) => setArgs(event.target.value)}
-              placeholder="-y some-mcp-package"
-            />
-          </label>
-        </>
-      ) : (
-        <>
-          <label className="block text-sm font-medium text-slate-700">
-            URL
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://example.com/mcp"
-            />
-          </label>
-          <label className="flex items-center gap-1 text-sm">
-            <input type="checkbox" checked={sse} onChange={(event) => setSse(event.target.checked)} />
-            SSE transport
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Headers (JSON)
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
-              value={headersText}
-              onChange={(event) => setHeadersText(event.target.value)}
-              placeholder='{"Authorization":"Bearer ..."}'
-            />
-          </label>
-        </>
-      )}
-
-      {mcp && mcp.secrets.length > 0 && (
-        <p className="text-sm text-slate-600">
-          Existing secrets: {mcp.secrets.map((secret) => `${secret.envKey} (${secret.hasValue ? 'set' : 'unset'})`).join(', ')}
-        </p>
-      )}
-
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-slate-700">
-          {mcp ? 'Replace/add secret env values' : 'Secret env values'}
-        </p>
-        {secrets.map((secret, index) => (
-          <div key={index} className="flex gap-2">
-            <input
-              className="w-1/3 rounded border border-slate-300 px-2 py-1"
-              placeholder="ENV_KEY"
-              value={secret.envKey}
-              onChange={(event) => updateSecret(index, 'envKey', event.target.value)}
-            />
-            <input
-              className="flex-1 rounded border border-slate-300 px-2 py-1"
-              type="password"
-              placeholder="value"
-              value={secret.value}
-              onChange={(event) => updateSecret(index, 'value', event.target.value)}
-            />
-            <button type="button" onClick={() => removeSecretRow(index)} className="text-slate-500">
-              remove
-            </button>
           </div>
-        ))}
-        <button type="button" onClick={addSecretRow} className="text-sm text-blue-600">
-          + add secret
-        </button>
-      </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+          {!mcp && (
+            <div>
+              <span className={cls.label}>Transport</span>
+              <div className="mt-1 inline-flex overflow-hidden rounded-md border border-line/15" role="group" aria-label="Transport kind">
+                {(['stdio', 'remote'] as const).map((option, index) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={kind === option}
+                    onClick={() => setKind(option)}
+                    className={`cursor-pointer px-3 py-2 font-mono text-sm transition duration-150 ${index > 0 ? 'border-l border-line/15' : ''} ${
+                      kind === option ? 'bg-accent/15 font-semibold text-accent' : 'text-faint hover:bg-raise hover:text-dim'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {mcp ? 'Save changes' : 'Create MCP'}
-        </button>
-        {onCancel && (
-          <button type="button" onClick={onCancel} className="rounded border border-slate-300 px-3 py-1.5 text-sm">
-            Cancel
-          </button>
+        {kind === 'stdio' ? (
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+            <div>
+              <label htmlFor="mcp-command" className={cls.label}>
+                Command
+              </label>
+              <input
+                id="mcp-command"
+                className={`${cls.input} mt-1 font-mono text-sm`}
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+                placeholder="npx"
+              />
+            </div>
+            <div>
+              <label htmlFor="mcp-args" className={cls.label}>
+                Args <span className="normal-case">(space-separated)</span>
+              </label>
+              <input
+                id="mcp-args"
+                className={`${cls.input} mt-1 font-mono text-sm`}
+                value={args}
+                onChange={(event) => setArgs(event.target.value)}
+                placeholder="-y @modelcontextprotocol/server-github"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="mcp-url" className={cls.label}>
+                URL
+              </label>
+              <input
+                id="mcp-url"
+                className={`${cls.input} mt-1 font-mono text-sm`}
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://example.com/mcp"
+              />
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line/15 px-3 py-2 text-sm text-dim">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-[#9be870]"
+                  checked={sse}
+                  onChange={(event) => setSse(event.target.checked)}
+                />
+                Legacy SSE transport
+              </label>
+              <div className="min-w-64 flex-1">
+                <label htmlFor="mcp-headers" className={cls.label}>
+                  Headers <span className="normal-case">(JSON)</span>
+                </label>
+                <input
+                  id="mcp-headers"
+                  className={`${cls.input} mt-1 font-mono text-sm`}
+                  value={headersText}
+                  onChange={(event) => setHeadersText(event.target.value)}
+                  placeholder='{"Authorization":"Bearer ..."}'
+                />
+              </div>
+            </div>
+          </div>
         )}
+
+        <div className="rounded-md border border-line/10 bg-raise/40 p-3">
+          <p className={cls.label}>{mcp ? 'Replace / add secret env values' : 'Secret env values'}</p>
+          <p className="mt-0.5 text-xs text-faint">
+            Encrypted at rest; injected into the MCP process env. Never shown again after saving.
+          </p>
+          {mcp && mcp.secrets.length > 0 && (
+            <p className="mt-2 font-mono text-xs text-dim">
+              existing: {mcp.secrets.map((secret) => `${secret.envKey}=${secret.hasValue ? '●●●' : 'unset'}`).join('  ')}
+            </p>
+          )}
+          <div className="mt-2 space-y-2">
+            {secrets.map((secret, index) => (
+              <div key={index} className="flex gap-2">
+                <input
+                  className={`${cls.input} w-2/5 font-mono text-sm`}
+                  placeholder="ENV_KEY"
+                  aria-label={`Secret ${index + 1} env key`}
+                  value={secret.envKey}
+                  onChange={(event) => updateSecret(index, 'envKey', event.target.value)}
+                />
+                <input
+                  className={`${cls.input} flex-1 font-mono text-sm`}
+                  type="password"
+                  placeholder="value"
+                  aria-label={`Secret ${index + 1} value`}
+                  value={secret.value}
+                  onChange={(event) => updateSecret(index, 'value', event.target.value)}
+                />
+                <button type="button" onClick={() => removeSecretRow(index)} className={cls.btnDanger} aria-label={`Remove secret ${index + 1}`}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addSecretRow} className="mt-2 cursor-pointer text-sm font-medium text-accent transition hover:brightness-110">
+            + add secret
+          </button>
+        </div>
+
+        <ErrorNote message={error} />
+
+        <div className="flex gap-2">
+          <button type="submit" disabled={submitting} className={cls.btnPrimary}>
+            {submitting ? 'Saving…' : mcp ? 'Save changes' : 'Create MCP'}
+          </button>
+          {onCancel && (
+            <button type="button" onClick={onCancel} className={cls.btnGhost}>
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
     </form>
   );

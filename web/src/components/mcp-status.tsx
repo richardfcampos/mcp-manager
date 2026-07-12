@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { getMcpStatus } from '../api-client.js';
 import type { McpStatusEntry, UpstreamStatus } from '../api-types.js';
+import { EmptyState, ErrorNote, SectionCard, StatusDot } from './ui-primitives.js';
 
 const POLL_INTERVAL_MS = 5000;
 
-const STATUS_STYLES: Record<UpstreamStatus, string> = {
-  running: 'bg-green-100 text-green-800',
-  starting: 'bg-yellow-100 text-yellow-800',
-  error: 'bg-red-100 text-red-800',
-  stopped: 'bg-slate-100 text-slate-600',
+const STATUS_META: Record<UpstreamStatus, { tone: 'ok' | 'warn' | 'err' | 'idle'; chip: string; pulse: boolean }> = {
+  running: { tone: 'ok', chip: 'text-ok border-ok/30', pulse: true },
+  starting: { tone: 'warn', chip: 'text-warn border-warn/30', pulse: true },
+  error: { tone: 'err', chip: 'text-err border-err/30', pulse: false },
+  stopped: { tone: 'idle', chip: 'text-faint border-line/15', pulse: false },
 };
 
 /** Polls GET /api/actions/status and renders every registered MCP's live
@@ -43,24 +44,36 @@ export default function McpStatus(): React.JSX.Element {
     };
   }, []);
 
+  const runningCount = statuses.filter((entry) => entry.status === 'running').length;
+
   return (
-    <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="text-lg font-semibold text-slate-900">MCP status</h3>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <SectionCard
+      title="Upstream status"
+      aside={
+        <span className="font-mono text-xs text-faint">
+          {runningCount}/{statuses.length} running · 5s poll
+        </span>
+      }
+    >
+      <ErrorNote message={error} />
       {statuses.length === 0 ? (
-        <p className="text-sm text-slate-500">No MCP servers registered yet.</p>
+        <EmptyState title="No MCP servers registered" hint="Status appears here once the first MCP exists." />
       ) : (
-        <ul className="space-y-1 text-sm">
-          {statuses.map((entry) => (
-            <li key={entry.mcpId} className="flex items-center justify-between">
-              <span>{entry.slug}</span>
-              <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[entry.status]}`}>
-                {entry.status}
-              </span>
-            </li>
-          ))}
+        <ul className="-m-4 mt-0 divide-y divide-line/5">
+          {statuses.map((entry) => {
+            const meta = STATUS_META[entry.status];
+            return (
+              <li key={entry.mcpId} className="flex items-center gap-3 px-4 py-2.5">
+                <StatusDot tone={meta.tone} pulse={meta.pulse} />
+                <span className="font-mono text-sm text-ink">{entry.slug}</span>
+                <span className={`ml-auto rounded-sm border px-2 py-0.5 font-mono text-xs ${meta.chip}`}>
+                  {entry.status}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
-    </section>
+    </SectionCard>
   );
 }

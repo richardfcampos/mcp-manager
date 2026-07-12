@@ -1,28 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import AssignmentMatrix from './components/assignment-matrix.js';
 import ConsumersList from './components/consumers-list.js';
+import ControlRail, { TAB_ITEMS, type ConsoleTab } from './components/control-rail.js';
 import McpForm from './components/mcp-form.js';
+import McpServerList from './components/mcp-server-list.js';
 import McpStatus from './components/mcp-status.js';
 import WriteConfigsButton from './components/write-configs-button.js';
 import { deleteMcpServer, listMcpServers } from './api-client.js';
+import { ErrorNote } from './components/ui-primitives.js';
 import type { McpServer } from './api-types.js';
 
-type Tab = 'mcp-servers' | 'projects' | 'assignments' | 'actions';
-
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'mcp-servers', label: 'MCP Servers' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'assignments', label: 'Assignments' },
-  { id: 'actions', label: 'Actions & Status' },
-];
-
-/** Wires the create-form (T48), consumers list (T49), assignment matrix
- * (T50), write-configs button (T51), and status panel (T52) into one
- * navigable SPA -- everything backed by the real `/api` through the typed
- * client (T47). This is the SAME view Express serves as the static SPA
- * (src/api/create-app.ts / src/server.ts). */
+/** Console shell: desktop control rail + mobile top bar around the four
+ * sections (MCP catalog, project ledger, access matrix, ops). Everything is
+ * backed by the real `/api` through the typed client -- this is the same
+ * view Express serves as the static SPA (src/api/create-app.ts). */
 export default function App(): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('mcp-servers');
+  const [tab, setTab] = useState<ConsoleTab>('mcp-servers');
   const [servers, setServers] = useState<McpServer[]>([]);
   const [editing, setEditing] = useState<McpServer | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -52,73 +45,62 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-900">MCP Manager</h1>
+    <div className="flex min-h-dvh">
+      <ControlRail tab={tab} onTabChange={setTab} />
 
-        <nav className="flex gap-2">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                tab === item.id ? 'bg-blue-600 text-white' : 'bg-white text-slate-700'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        {tab === 'mcp-servers' && (
-          <div className="space-y-4">
-            <McpForm
-              mcp={editing}
-              onSaved={() => {
-                setEditing(undefined);
-                void refreshServers();
-              }}
-              onCancel={editing ? () => setEditing(undefined) : undefined}
-            />
-            <section className="rounded-lg border border-slate-200 bg-white p-4">
-              <h3 className="text-lg font-semibold text-slate-900">Registered MCP servers</h3>
-              {servers.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">No MCP servers registered yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {servers.map((server) => (
-                    <li key={server.id} className="flex items-center justify-between">
-                      <span>
-                        {server.name} <span className="text-slate-400">({server.transport})</span>
-                      </span>
-                      <span className="space-x-2">
-                        <button type="button" onClick={() => setEditing(server)} className="text-blue-600">
-                          Edit
-                        </button>
-                        <button type="button" onClick={() => void handleDelete(server.id)} className="text-red-600">
-                          Delete
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+      <div className="min-w-0 flex-1">
+        {/* Mobile top bar (rail is desktop-only). */}
+        <header className="sticky top-0 z-20 border-b border-line/10 bg-bg/90 backdrop-blur-sm lg:hidden">
+          <div className="flex items-center justify-between px-4 pt-3">
+            <p className="font-display text-base font-bold tracking-tight text-ink">
+              mcp<span className="text-accent">/</span>manager
+            </p>
+            <p className="font-mono text-[11px] text-faint">{window.location.host}</p>
           </div>
-        )}
+          <nav className="flex gap-1 overflow-x-auto px-3 py-2" aria-label="Console sections">
+            {TAB_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={tab === item.id ? 'page' : undefined}
+                onClick={() => setTab(item.id)}
+                className={`shrink-0 cursor-pointer rounded-md px-3 py-1.5 text-sm transition duration-150 ${
+                  tab === item.id ? 'bg-accent/12 font-semibold text-accent' : 'text-dim hover:bg-raise hover:text-ink'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </header>
 
-        {tab === 'projects' && <ConsumersList />}
-        {tab === 'assignments' && <AssignmentMatrix />}
-        {tab === 'actions' && (
-          <div className="space-y-4">
-            <WriteConfigsButton />
-            <McpStatus />
-          </div>
-        )}
+        <main className="mx-auto max-w-5xl space-y-4 px-4 py-6 lg:px-8">
+          <ErrorNote message={error} />
+
+          {tab === 'mcp-servers' && (
+            <div className="space-y-4">
+              <McpForm
+                mcp={editing}
+                onSaved={() => {
+                  setEditing(undefined);
+                  void refreshServers();
+                }}
+                onCancel={editing ? () => setEditing(undefined) : undefined}
+              />
+              <McpServerList servers={servers} onEdit={setEditing} onDelete={handleDelete} />
+            </div>
+          )}
+
+          {tab === 'projects' && <ConsumersList />}
+          {tab === 'assignments' && <AssignmentMatrix />}
+          {tab === 'actions' && (
+            <div className="space-y-4">
+              <WriteConfigsButton />
+              <McpStatus />
+            </div>
+          )}
+        </main>
       </div>
-    </main>
+    </div>
   );
 }

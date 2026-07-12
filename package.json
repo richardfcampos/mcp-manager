@@ -17,6 +17,9 @@
     "test:integration": "vitest run test/integration"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.2.10",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "better-sqlite3": "^11.9.1",
     "express": "^4.21.2"
