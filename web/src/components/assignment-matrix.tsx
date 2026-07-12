@@ -80,14 +80,17 @@ export default function AssignmentMatrix(): React.JSX.Element {
         <span className="font-mono text-xs text-faint">
           {servers.length} mcp{servers.length === 1 ? '' : 's'} × {consumers.length} projects
         </span>
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Filter projects…"
-          aria-label="Filter projects in the matrix"
-          className={`${cls.input} ml-auto w-56 py-1.5`}
-        />
+        {/* Width on the wrapper (cls.input carries w-full). */}
+        <div className="ml-auto w-44 sm:w-56">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter projects…"
+            aria-label="Filter projects in the matrix"
+            className={cls.input}
+          />
+        </div>
       </header>
 
       <div className="px-4 pt-3">

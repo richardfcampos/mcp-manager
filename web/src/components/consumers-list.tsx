@@ -78,15 +78,19 @@ export default function ConsumersList(): React.JSX.Element {
           <span className="font-mono text-xs text-faint">
             {visibleCount}/{consumers.length}
           </span>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter by name or path…"
-              aria-label="Filter projects"
-              className={`${cls.input} w-56 py-1.5`}
-            />
+          <div className="ml-auto flex flex-nowrap items-center gap-2">
+            {/* Width on the wrapper: cls.input carries w-full and a second
+             * width utility on the same element resolves by CSS order. */}
+            <div className="w-44 sm:w-56">
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Filter by name or path…"
+                aria-label="Filter projects"
+                className={cls.input}
+              />
+            </div>
             <button type="button" onClick={() => void handleRescan()} disabled={rescanning} className={cls.btnGhost}>
               <svg viewBox="0 0 16 16" className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                 <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5V4.5h-3" strokeLinecap="round" strokeLinejoin="round" />

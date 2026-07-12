@@ -24,7 +24,8 @@ const EMPTY_SECRET: SecretDraft = { envKey: '', value: '' };
  * rendering its plaintext (SEC-01; the server never returns it anyway). */
 export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React.JSX.Element {
   const [name, setName] = useState(mcp?.name ?? '');
-  const [kind, setKind] = useState<'stdio' | 'remote'>(mcp?.transport === 'stdio' ? 'stdio' : 'remote');
+  // New MCPs default to stdio (the common case: npx/uvx packages).
+  const [kind, setKind] = useState<'stdio' | 'remote'>(!mcp || mcp.transport === 'stdio' ? 'stdio' : 'remote');
   const [command, setCommand] = useState(mcp?.command ?? '');
   const [args, setArgs] = useState((mcp?.args ?? []).join(' '));
   const [url, setUrl] = useState(mcp?.url ?? '');
@@ -36,7 +37,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
 
   useEffect(() => {
     setName(mcp?.name ?? '');
-    setKind(mcp?.transport === 'stdio' ? 'stdio' : 'remote');
+    setKind(!mcp || mcp.transport === 'stdio' ? 'stdio' : 'remote');
     setCommand(mcp?.command ?? '');
     setArgs((mcp?.args ?? []).join(' '));
     setUrl(mcp?.url ?? '');
@@ -240,22 +241,29 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
           )}
           <div className="mt-2 space-y-2">
             {secrets.map((secret, index) => (
-              <div key={index} className="flex gap-2">
-                <input
-                  className={`${cls.input} w-2/5 font-mono text-sm`}
-                  placeholder="ENV_KEY"
-                  aria-label={`Secret ${index + 1} env key`}
-                  value={secret.envKey}
-                  onChange={(event) => updateSecret(index, 'envKey', event.target.value)}
-                />
-                <input
-                  className={`${cls.input} flex-1 font-mono text-sm`}
-                  type="password"
-                  placeholder="value"
-                  aria-label={`Secret ${index + 1} value`}
-                  value={secret.value}
-                  onChange={(event) => updateSecret(index, 'value', event.target.value)}
-                />
+              // Width lives on wrapper divs: cls.input carries w-full, and
+              // stacking a second width utility on the same element makes the
+              // winner depend on generated-CSS order, not class order.
+              <div key={index} className="flex items-center gap-2">
+                <div className="w-2/5">
+                  <input
+                    className={`${cls.input} font-mono text-sm`}
+                    placeholder="ENV_KEY"
+                    aria-label={`Secret ${index + 1} env key`}
+                    value={secret.envKey}
+                    onChange={(event) => updateSecret(index, 'envKey', event.target.value)}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <input
+                    className={`${cls.input} font-mono text-sm`}
+                    type="password"
+                    placeholder="value"
+                    aria-label={`Secret ${index + 1} value`}
+                    value={secret.value}
+                    onChange={(event) => updateSecret(index, 'value', event.target.value)}
+                  />
+                </div>
                 <button type="button" onClick={() => removeSecretRow(index)} className={cls.btnDanger} aria-label={`Remove secret ${index + 1}`}>
                   ✕
                 </button>
