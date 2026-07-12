@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,14 @@ import { insertConsumer } from '../../src/domain/consumers/consumers-repository.
 import { assign, allowedMcpIds } from '../../src/domain/assignments/assignments-repository.js';
 import { generateId, nowIso } from '../../src/db/repository-helpers.js';
 import { buildTestApp, type TestApp } from './helpers/build-test-app.js';
+
+/** Creates a directory scanWorkspace recognizes as a project root (discovery
+ * is marker-based: it keys off a project file such as package.json). */
+function mkProjectDir(path: string): string {
+  mkdirSync(path, { recursive: true });
+  writeFileSync(join(path, 'package.json'), '{}');
+  return path;
+}
 
 describe('GET /api/consumers, POST /api/consumers/discover', () => {
   let testApp: TestApp | undefined;
@@ -20,10 +28,10 @@ describe('GET /api/consumers, POST /api/consumers/discover', () => {
     }
   });
 
-  it('PRJ-01: POST discover lists each immediate subdir of the mounted root as a discovered project', async () => {
+  it('PRJ-01: POST discover lists each project root under the mounted root as a discovered project', async () => {
     workspaceRoot = mkdtempSync(join(tmpdir(), 'mcp-manager-discover-'));
-    mkdirSync(join(workspaceRoot, 'project-alpha'));
-    mkdirSync(join(workspaceRoot, 'project-beta'));
+    mkProjectDir(join(workspaceRoot, 'project-alpha'));
+    mkProjectDir(join(workspaceRoot, 'project-beta'));
     testApp = buildTestApp({ workspaceRoot });
 
     const response = await request(testApp.app).post('/api/consumers/discover');
@@ -41,7 +49,7 @@ describe('GET /api/consumers, POST /api/consumers/discover', () => {
 
   it('GET list returns both discovered and manually-registered consumers', async () => {
     workspaceRoot = mkdtempSync(join(tmpdir(), 'mcp-manager-discover-'));
-    mkdirSync(join(workspaceRoot, 'auto-project'));
+    mkProjectDir(join(workspaceRoot, 'auto-project'));
     testApp = buildTestApp({ workspaceRoot });
     await request(testApp.app).post('/api/consumers/discover');
 
@@ -64,7 +72,7 @@ describe('GET /api/consumers, POST /api/consumers/discover', () => {
   it('PRJ-03: a previously-discovered folder now missing -> available=false, its assignment rows preserved', async () => {
     workspaceRoot = mkdtempSync(join(tmpdir(), 'mcp-manager-discover-'));
     const vanishingPath = join(workspaceRoot, 'vanishing-project');
-    mkdirSync(vanishingPath);
+    mkProjectDir(vanishingPath);
     testApp = buildTestApp({ workspaceRoot });
     await request(testApp.app).post('/api/consumers/discover');
 
@@ -91,7 +99,7 @@ describe('GET /api/consumers, POST /api/consumers/discover', () => {
 
   it('a repeat scan of an unchanged tree is idempotent (no vanished/restored, present unchanged)', async () => {
     workspaceRoot = mkdtempSync(join(tmpdir(), 'mcp-manager-discover-'));
-    mkdirSync(join(workspaceRoot, 'stable-project'));
+    mkProjectDir(join(workspaceRoot, 'stable-project'));
     testApp = buildTestApp({ workspaceRoot });
 
     const first = await request(testApp.app).post('/api/consumers/discover');
