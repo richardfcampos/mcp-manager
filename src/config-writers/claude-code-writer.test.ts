@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -80,6 +80,27 @@ describe('claude-code-writer', () => {
     expect(result.status).toBe('removed');
     const config = readMcpJson(projectDir) as { mcpServers: Record<string, unknown> };
     expect(config.mcpServers[MANAGED_KEY]).toBeUndefined();
+  });
+
+  it('CFG-02: cleanup on a project with no config file creates nothing (no stub)', async () => {
+    const consumer = buildConsumer(projectDir);
+
+    const result = await writeConfig(consumer, GATEWAY_BASE_URL, false);
+
+    expect(result.status).toBe('unchanged');
+    expect(existsSync(join(projectDir, '.mcp.json'))).toBe(false);
+  });
+
+  it('CFG-02: cleanup leaves a user file without the managed entry byte-identical (no reformat)', async () => {
+    // Deliberately NOT our serializer's formatting: any rewrite would change bytes.
+    const userContent = '{"mcpServers":{"user-mcp":{"command":"npx"}}}';
+    writeFileSync(join(projectDir, '.mcp.json'), userContent);
+    const consumer = buildConsumer(projectDir);
+
+    const result = await writeConfig(consumer, GATEWAY_BASE_URL, false);
+
+    expect(result.status).toBe('unchanged');
+    expect(readFileSync(join(projectDir, '.mcp.json'), 'utf-8')).toBe(userContent);
   });
 
   it('preserves unrelated existing .mcp.json entries', async () => {

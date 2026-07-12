@@ -56,6 +56,13 @@ export const writeConfig: ConfigWriter['writeConfig'] = async (
     const existing = parseExisting(currentContent);
     const existingServers = existing.mcpServers ?? {};
 
+    // Cleanup with nothing to clean is a no-op: never create a stub file for
+    // a project that has no config, and never rewrite (reformat) a user's
+    // file that doesn't contain our managed entry.
+    if (!hasAssignments && (currentContent === undefined || !(MANAGED_KEY in existingServers))) {
+      return { consumerId: consumer.id, format: 'claude-code', path, status: 'unchanged' };
+    }
+
     const entry: ManagedEntry = {
       type: 'http',
       url: `${gatewayBaseUrl}/mcp/${consumer.token}`,
