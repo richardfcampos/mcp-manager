@@ -9,11 +9,17 @@ services:
       # so env.ts's existence check validates the exact path it receives,
       # with no host/container path translation to keep in sync.
       MCP_MANAGER_WORKSPACE_ROOT: ${MCP_MANAGER_WORKSPACE_ROOT:?set MCP_MANAGER_WORKSPACE_ROOT in .env, see .env.example}
-      PORT: ${PORT:-3000}
+      PORT: ${PORT:-7788}
+      # Base URL written into the projects' client configs so clients on the
+      # LAN (e.g. another machine reaching this host as `intel`) resolve the
+      # gateway. Override in .env; defaults to the local loopback address.
+      MCP_MANAGER_PUBLIC_BASE_URL: ${MCP_MANAGER_PUBLIC_BASE_URL:-http://127.0.0.1:7788}
     ports:
-      # Host-side restriction to loopback: this is the real "never leaves
-      # localhost" boundary (see Dockerfile's HOST=0.0.0.0 comment).
-      - '127.0.0.1:${PORT:-3000}:${PORT:-3000}'
+      # Published on 0.0.0.0 (LAN-accessible), matching the other projects in
+      # this workspace. The per-project bearer token still guards the MCP
+      # gateway; the UI/API themselves have no auth, so only expose on a
+      # trusted network.
+      - '${PORT:-7788}:${PORT:-7788}'
     volumes:
       - ${MCP_MANAGER_WORKSPACE_ROOT}:${MCP_MANAGER_WORKSPACE_ROOT}
       - mcp-manager-data:/app/data

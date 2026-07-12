@@ -21,6 +21,7 @@ Memória do projeto: decisões arquiteturais (AD-NNN) + snapshot de handoff.
 | AD-013 | DB = SQLite via **better-sqlite3** (default seguro sobre `node:sqlite`) | Estável/síncrono; relatórios divergiram sobre node:sqlite | 2026-07-09 |
 | AD-014 | Cifra de secrets = Node `crypto` **AES-256-GCM**, IV por secret, master key via env `MCP_MANAGER_MASTER_KEY` | Sem dep externa; padrão sólido | 2026-07-09 |
 | AD-015 | MCPs stdio rodam via **`StdioClientTransport` do SDK** (spawna o child); imagem `node:22-slim` + `uv` copiado de `ghcr.io/astral-sh/uv` | SDK já gerencia processo; Node+Python na mesma imagem | 2026-07-09 |
+| AD-016 | **Exposição na rede** (supersede o "localhost-only" do AD-010): publica em **0.0.0.0**, porta **7788**, sem login na UI; `MCP_MANAGER_PUBLIC_BASE_URL=http://intel:7788` nos configs gravados | Usuário confirmou; alinha ao padrão dos outros projetos do workspace (todos expõem `PORT:PORT` em 0.0.0.0, sem auth). Tokens por-alvo ainda protegem o gateway; UI sem auth → só rede confiável | 2026-07-12 |
 
 ## Handoff
 
