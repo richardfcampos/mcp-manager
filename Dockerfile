@@ -47,8 +47,11 @@ WORKDIR /app
 # Non-root uid 1000: gateway spawns arbitrary MCP child processes (npx/uvx),
 # so the container never runs that surface as root. node:22-slim already
 # ships a uid/gid 1000 user ("node"); reuse it instead of colliding with it.
-RUN mkdir -p /app/data /workspace \
-    && chown -R 1000:1000 /app /workspace
+# The uv/npm cache dirs are created here (not just at runtime) so the named
+# volumes mounted over them inherit uid 1000 ownership on first creation --
+# a root-owned fresh volume makes every uvx spawn die with EACCES.
+RUN mkdir -p /app/data /workspace /home/node/.cache/uv /home/node/.npm \
+    && chown -R 1000:1000 /app /workspace /home/node/.cache /home/node/.npm
 
 COPY --from=prod-deps --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=builder --chown=1000:1000 /app/dist ./dist
