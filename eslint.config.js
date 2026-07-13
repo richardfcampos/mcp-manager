@@ -3,7 +3,8 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'web/dist/**', 'coverage/**'],
+    // .gitnexus is dropped into the repo by the external GitNexus indexer.
+    ignores: ['dist/**', 'node_modules/**', 'web/dist/**', 'coverage/**', '.gitnexus/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

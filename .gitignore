@@ -7,3 +7,6 @@ web/dist/
 .env
 *.log
 .DS_Store
+
+# External GitNexus indexer artifacts
+.gitnexus/
