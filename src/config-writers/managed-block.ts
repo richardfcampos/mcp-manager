@@ -1,5 +1,3 @@
-import type { ManagedEntry } from './writer-interface.js';
-
 /**
  * Stable key identifying our single aggregated gateway entry inside a
  * client's `mcpServers` map. One key regardless of how many MCPs are
@@ -15,12 +13,14 @@ export type McpServersMap = Record<string, unknown>;
  * Upserts `managedEntries` into `existingServers`, leaving every
  * non-managed (user-authored) key untouched. Returns a NEW map with keys in
  * deterministic (sorted) order so repeated merges of logically-identical
- * content serialize to byte-identical JSON -- the property idempotent
- * writes depend on (CFG-02).
+ * content serialize byte-identically -- the property idempotent writes
+ * depend on (CFG-02). The managed value shape is client-specific (JSON
+ * clients use `{type,url,headers}`, Codex TOML uses `{url,http_headers}`),
+ * so it's typed as `unknown` here; each writer builds its own entry.
  */
 export function mergeManagedEntries(
   existingServers: McpServersMap,
-  managedEntries: Record<string, ManagedEntry>,
+  managedEntries: Record<string, unknown>,
 ): McpServersMap {
   return sortedMap({ ...existingServers, ...managedEntries });
 }

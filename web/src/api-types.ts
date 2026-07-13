@@ -57,7 +57,7 @@ export interface UpdateMcpServerInput {
 }
 
 export type ConsumerType = 'project' | 'desktop-profile';
-export type ClientFormat = 'claude-code' | 'cursor' | 'vscode';
+export type ClientFormat = 'claude-code' | 'cursor' | 'vscode' | 'codex';
 
 export interface Consumer {
   id: string;

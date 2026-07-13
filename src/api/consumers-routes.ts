@@ -15,7 +15,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const VALID_CLIENT_FORMATS: readonly ClientFormat[] = ['claude-code', 'cursor', 'vscode'];
+const VALID_CLIENT_FORMATS: readonly ClientFormat[] = ['claude-code', 'cursor', 'vscode', 'codex'];
 
 function isValidClientFormat(value: unknown): value is ClientFormat {
   return typeof value === 'string' && (VALID_CLIENT_FORMATS as readonly string[]).includes(value);

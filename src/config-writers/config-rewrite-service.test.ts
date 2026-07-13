@@ -14,6 +14,7 @@ import {
   type ConfigRewriteServiceDeps,
 } from './config-rewrite-service.js';
 import { writeConfig as writeClaudeCodeConfig } from './claude-code-writer.js';
+import { writeConfig as writeCodexConfig } from './codex-writer.js';
 import { writeConfig as writeVscodeConfig } from './vscode-writer.js';
 import { MANAGED_KEY } from './managed-block.js';
 import type { ConfigWriter } from './writer-interface.js';
@@ -212,10 +213,10 @@ describe('config-rewrite-service', () => {
     expect(results[0]).toMatchObject({ format: 'claude-code', status: 'written' });
   });
 
-  it('CFG-D3: clientFormats with all three writes all three files; one failing format does not abort the others', async () => {
+  it('CFG-D3: clientFormats with all four writes all four files; one failing format does not abort the others', async () => {
     const db = migratedDb();
     const path = join(root, 'project-all-formats');
-    seedProjectConsumer(db, 'consumer-all', path, ['claude-code', 'cursor', 'vscode']);
+    seedProjectConsumer(db, 'consumer-all', path, ['claude-code', 'cursor', 'vscode', 'codex']);
     seedMcp(db, 'mcp-1');
     assign(db, 'consumer-all', 'mcp-1');
 
@@ -232,16 +233,17 @@ describe('config-rewrite-service', () => {
         'claude-code': { writeConfig: writeClaudeCodeConfig },
         cursor: throwingCursorWriter,
         vscode: { writeConfig: writeVscodeConfig },
+        codex: { writeConfig: writeCodexConfig },
       },
     };
     const results = await rewriteConfigsForConsumers(deps, ['consumer-all']);
 
-    expect(results).toHaveLength(3);
-    expect(results.map((r) => r.format).sort()).toEqual(['claude-code', 'cursor', 'vscode']);
+    expect(results).toHaveLength(4);
+    expect(results.map((r) => r.format).sort()).toEqual(['claude-code', 'codex', 'cursor', 'vscode']);
     const cursorResult = results.find((r) => r.format === 'cursor')!;
     expect(cursorResult.status).toBe('error');
     expect(cursorResult.error).toContain('simulated cursor failure');
-    expect(results.filter((r) => r.status === 'written')).toHaveLength(2);
+    expect(results.filter((r) => r.status === 'written')).toHaveLength(3);
     expect(existsSync(join(path, '.mcp.json'))).toBe(true);
     expect(existsSync(join(path, '.vscode', 'mcp.json'))).toBe(true);
   });

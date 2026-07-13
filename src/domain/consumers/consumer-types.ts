@@ -4,7 +4,7 @@ export type ConsumerType = 'project' | 'desktop-profile';
 
 /** Native client config formats a `project` consumer can be written for.
  * Only meaningful when type === 'project'. */
-export type ClientFormat = 'claude-code' | 'cursor' | 'vscode';
+export type ClientFormat = 'claude-code' | 'cursor' | 'vscode' | 'codex';
 
 export interface ConsumerRecord {
   id: string;

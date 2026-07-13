@@ -3,6 +3,7 @@ import * as assignmentsRepository from '../domain/assignments/assignments-reposi
 import * as consumersRepository from '../domain/consumers/consumers-repository.js';
 import type { ClientFormat, ConsumerRecord } from '../domain/consumers/consumer-types.js';
 import * as claudeCodeWriter from './claude-code-writer.js';
+import * as codexWriter from './codex-writer.js';
 import * as cursorWriter from './cursor-writer.js';
 import * as vscodeWriter from './vscode-writer.js';
 import type { ConfigWriter, WriteConfigResult } from './writer-interface.js';
@@ -16,6 +17,7 @@ const DEFAULT_WRITERS: Partial<Record<ClientFormat, ConfigWriter>> = {
   'claude-code': claudeCodeWriter,
   cursor: cursorWriter,
   vscode: vscodeWriter,
+  codex: codexWriter,
 };
 
 /** CFG-D2: retro-compat default when a consumer has no explicit
