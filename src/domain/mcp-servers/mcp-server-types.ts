@@ -68,8 +68,9 @@ export interface InsertServerInput {
   secrets: SealedSecretInput[];
 }
 
-/** Partial update; when `secrets` is provided the entire secret row set for
- * the server is replaced (old rows removed, new rows inserted). */
+/** Partial update. Secrets are per-key operations: `removeSecretKeys`
+ * deletes those rows, then `secrets` upserts by env_key -- untouched keys
+ * keep their sealed values. */
 export interface UpdateServerInput {
   name?: string;
   command?: string | null;
@@ -77,4 +78,5 @@ export interface UpdateServerInput {
   url?: string | null;
   headers?: Record<string, string> | null;
   secrets?: SealedSecretInput[];
+  removeSecretKeys?: string[];
 }

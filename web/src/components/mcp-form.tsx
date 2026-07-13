@@ -32,6 +32,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
   const [sse, setSse] = useState(mcp?.transport === 'sse');
   const [headersText, setHeadersText] = useState(mcp?.headers ? JSON.stringify(mcp.headers) : '');
   const [secrets, setSecrets] = useState<SecretDraft[]>([{ ...EMPTY_SECRET }]);
+  const [removeKeys, setRemoveKeys] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,8 +45,15 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
     setSse(mcp?.transport === 'sse');
     setHeadersText(mcp?.headers ? JSON.stringify(mcp.headers) : '');
     setSecrets([{ ...EMPTY_SECRET }]);
+    setRemoveKeys([]);
     setError(null);
   }, [mcp]);
+
+  function toggleRemoveKey(envKey: string): void {
+    setRemoveKeys((current) =>
+      current.includes(envKey) ? current.filter((key) => key !== envKey) : [...current, envKey],
+    );
+  }
 
   function updateSecret(index: number, field: keyof SecretDraft, value: string): void {
     setSecrets((current) => current.map((secret, i) => (i === index ? { ...secret, [field]: value } : secret)));
@@ -88,6 +96,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
             url: kind === 'remote' ? url : null,
             headers: kind === 'remote' ? (headers ?? null) : null,
             secrets: filledSecrets.length ? filledSecrets : undefined,
+            removeSecretKeys: removeKeys.length ? removeKeys : undefined,
           })
         : await createMcpServer({
             name,
@@ -235,9 +244,29 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
             Encrypted at rest; injected into the MCP process env. Never shown again after saving.
           </p>
           {mcp && mcp.secrets.length > 0 && (
-            <p className="mt-2 font-mono text-xs text-dim">
-              existing: {mcp.secrets.map((secret) => `${secret.envKey}=${secret.hasValue ? '●●●' : 'unset'}`).join('  ')}
-            </p>
+            <ul className="mt-2 space-y-1">
+              {mcp.secrets.map((secret) => {
+                const marked = removeKeys.includes(secret.envKey);
+                return (
+                  <li key={secret.envKey} className="flex items-center gap-2 font-mono text-xs">
+                    <span className={marked ? 'text-err/80 line-through' : 'text-dim'}>
+                      {secret.envKey} = {secret.hasValue ? '●●●' : 'unset'}
+                    </span>
+                    {marked && <span className="text-[11px] text-err">removes on save</span>}
+                    <button
+                      type="button"
+                      onClick={() => toggleRemoveKey(secret.envKey)}
+                      aria-label={marked ? `Keep secret ${secret.envKey}` : `Remove secret ${secret.envKey}`}
+                      className={`cursor-pointer rounded-md px-1.5 py-0.5 transition duration-150 ${
+                        marked ? 'text-dim hover:bg-raise hover:text-ink' : 'text-err/80 hover:bg-err/10 hover:text-err'
+                      }`}
+                    >
+                      {marked ? 'undo' : '✕'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
           <div className="mt-2 space-y-2">
             {secrets.map((secret, index) => (

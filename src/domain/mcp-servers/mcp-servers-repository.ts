@@ -112,8 +112,10 @@ export function listServers(db: Database.Database): McpServerListItem[] {
   return rows.map((row) => ({ ...mapServerRow(row), secrets: secretFlags(db, row.id) }));
 }
 
-/** Updates the provided fields; when `secrets` is present the entire secret
- * row set for the server is replaced (old rows deleted, new rows inserted). */
+/** Updates the provided fields. Secrets are per-key operations:
+ * `removeSecretKeys` deletes those rows, then `secrets` upserts by env_key
+ * (only the provided keys are replaced) -- untouched keys keep their sealed
+ * values, since the client never holds them to resend. */
 export function updateServer(db: Database.Database, id: string, input: UpdateServerInput): void {
   withTransaction(db, () => {
     const current = db.prepare('SELECT * FROM mcp_server WHERE id = ?').get(id) as
@@ -134,8 +136,14 @@ export function updateServer(db: Database.Database, id: string, input: UpdateSer
       id,
     );
 
+    const deleteByKey = db.prepare('DELETE FROM secret WHERE mcp_server_id = ? AND env_key = ?');
+    for (const envKey of input.removeSecretKeys ?? []) {
+      deleteByKey.run(id, envKey);
+    }
     if (input.secrets) {
-      db.prepare('DELETE FROM secret WHERE mcp_server_id = ?').run(id);
+      for (const secret of input.secrets) {
+        deleteByKey.run(id, secret.envKey);
+      }
       insertSecretRows(db, id, input.secrets);
     }
   });

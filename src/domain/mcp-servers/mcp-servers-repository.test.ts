@@ -113,16 +113,41 @@ describe('mcp-servers-repository', () => {
     expect(server?.command).toBe('uvx');
   });
 
-  it('updateServer with secrets replaces the entire secret row set', () => {
-    insertServer(db, stdioInput());
+  it('updateServer upserts secrets by envKey, preserving untouched keys', () => {
+    insertServer(db, stdioInput()); // seeds GITHUB_TOKEN
 
     updateServer(db, 'mcp-1', {
       secrets: [{ envKey: 'NEW_TOKEN', iv: 'iv-9', tag: 'tag-9', ciphertext: 'cipher-9' }],
     });
 
+    const keys = listSealedSecrets(db, 'mcp-1')
+      .map((secret) => secret.envKey)
+      .sort();
+    expect(keys).toEqual(['GITHUB_TOKEN', 'NEW_TOKEN']);
+  });
+
+  it('updateServer replaces the sealed value when an existing envKey is re-provided', () => {
+    insertServer(db, stdioInput());
+
+    updateServer(db, 'mcp-1', {
+      secrets: [{ envKey: 'GITHUB_TOKEN', iv: 'iv-9', tag: 'tag-9', ciphertext: 'cipher-9' }],
+    });
+
     const sealed = listSealedSecrets(db, 'mcp-1');
     expect(sealed).toHaveLength(1);
-    expect(sealed[0].envKey).toBe('NEW_TOKEN');
+    expect(sealed[0].ciphertext).toBe('cipher-9');
+  });
+
+  it('updateServer removeSecretKeys deletes only the named keys', () => {
+    insertServer(db, stdioInput());
+    updateServer(db, 'mcp-1', {
+      secrets: [{ envKey: 'OTHER_TOKEN', iv: 'iv-2', tag: 'tag-2', ciphertext: 'cipher-2' }],
+    });
+
+    updateServer(db, 'mcp-1', { removeSecretKeys: ['GITHUB_TOKEN'] });
+
+    const keys = listSealedSecrets(db, 'mcp-1').map((secret) => secret.envKey);
+    expect(keys).toEqual(['OTHER_TOKEN']);
   });
 
   it('deleteServer removes the server row and all its secret rows', () => {

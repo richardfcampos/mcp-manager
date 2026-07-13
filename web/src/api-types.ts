@@ -50,7 +50,10 @@ export interface UpdateMcpServerInput {
   args?: string[] | null;
   url?: string | null;
   headers?: Record<string, string> | null;
+  /** Upserted by envKey; untouched keys keep their stored values. */
   secrets?: McpServerSecretInput[];
+  /** Env keys whose stored secrets are deleted (applied before upserts). */
+  removeSecretKeys?: string[];
 }
 
 export type ConsumerType = 'project' | 'desktop-profile';

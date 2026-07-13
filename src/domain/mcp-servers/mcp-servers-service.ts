@@ -51,7 +51,12 @@ export interface UpdateServerInput {
   args?: string[] | null;
   url?: string | null;
   headers?: Record<string, string> | null;
+  /** Upserted by envKey: only the provided keys are replaced; untouched
+   * keys keep their sealed values (the client never holds them). */
   secrets?: ServiceSecretInput[];
+  /** Env keys whose secret rows are deleted; applied before upserts, so a
+   * key present in both ends up replaced with the new value. */
+  removeSecretKeys?: string[];
 }
 
 /** Invoked exactly once by deleteServer with the ids of consumers whose
@@ -157,6 +162,8 @@ export function updateServer(
     name = trimmed;
   }
 
+  const removeSecretKeys = input.removeSecretKeys?.map((key) => key.trim()).filter(Boolean);
+
   mcpServersRepository.updateServer(deps.db, id, {
     name,
     command: input.command,
@@ -164,6 +171,7 @@ export function updateServer(
     url: input.url,
     headers: input.headers,
     secrets: sealServiceSecrets(input.secrets, deps.masterKey),
+    removeSecretKeys,
   });
 
   // Non-null: existence was checked above and this call never deletes the row.

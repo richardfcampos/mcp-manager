@@ -71,7 +71,21 @@ function parseUpdateInput(body: unknown): UpdateServerInput {
           ? (body.headers as Record<string, string>)
           : undefined,
     secrets: parseSecrets(body.secrets),
+    removeSecretKeys: parseRemoveSecretKeys(body.removeSecretKeys),
   };
+}
+
+/** Env keys whose secret rows the update deletes: must be an array of
+ * non-empty strings, so a malformed payload never silently skips a
+ * requested deletion. */
+function parseRemoveSecretKeys(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || !value.every((key) => typeof key === 'string' && key.trim())) {
+    throw new ValidationError('removeSecretKeys must be an array of non-empty strings');
+  }
+  return value as string[];
 }
 
 /** MCP-01/02/03, SEC-01, ACC-02: create/update/list/detail/delete for
