@@ -23,6 +23,13 @@ services:
     volumes:
       - ${MCP_MANAGER_WORKSPACE_ROOT}:${MCP_MANAGER_WORKSPACE_ROOT}
       - mcp-manager-data:/app/data
+      # Persist uvx/npx download caches across image rebuilds so a stdio
+      # MCP's first-boot runtime download happens once ever, not per build
+      # (a cold cache made first connections exceed client timeouts).
+      - mcp-manager-uv-cache:/home/node/.cache/uv
+      - mcp-manager-npm-cache:/home/node/.npm
 
 volumes:
   mcp-manager-data:
+  mcp-manager-uv-cache:
+  mcp-manager-npm-cache:
