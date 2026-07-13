@@ -68,10 +68,66 @@ describe('GET /api/actions/status', () => {
     const response = await request(testApp.app).get('/api/actions/status');
 
     expect(response.status).toBe(200);
-    const entry = (response.body.statuses as Array<{ mcpId: string; status: string }>).find(
-      (s) => s.mcpId === created.body.id,
-    );
+    const entry = (
+      response.body.statuses as Array<{ mcpId: string; status: string; error?: string }>
+    ).find((s) => s.mcpId === created.body.id);
     expect(entry?.status).toBe('error');
+    // The failure reason is surfaced so the UI can explain WHY, not just flag it.
+    expect(typeof entry?.error).toBe('string');
+    expect(entry?.error).not.toBe('');
+  });
+
+  it('POST test-mcp connects a lazy upstream on demand and reports running', async () => {
+    testApp = buildTestApp();
+    remoteHandles = [];
+    const created = await request(testApp.app).post('/api/mcp-servers').send({
+      name: 'Testable MCP',
+      kind: 'stdio',
+      command: process.execPath,
+      args: [FIXTURE_STDIO_PATH],
+    });
+
+    const response = await request(testApp.app)
+      .post('/api/actions/test-mcp')
+      .send({ mcpId: created.body.id });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      mcpId: created.body.id,
+      slug: created.body.slug,
+      status: 'running',
+    });
+  });
+
+  it('POST test-mcp reports a broken upstream as error with the reason (HTTP 200)', async () => {
+    testApp = buildTestApp();
+    const brokenRemote = await startDummyRemote({ failMode: true });
+    remoteHandles = [brokenRemote];
+    const created = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'Untestable MCP', kind: 'remote', url: brokenRemote.url });
+
+    const response = await request(testApp.app)
+      .post('/api/actions/test-mcp')
+      .send({ mcpId: created.body.id });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('error');
+    expect(typeof response.body.error).toBe('string');
+    expect(response.body.error).not.toBe('');
+  });
+
+  it('POST test-mcp validates input: missing mcpId is 400, unknown id is 404', async () => {
+    testApp = buildTestApp();
+    remoteHandles = [];
+
+    const missing = await request(testApp.app).post('/api/actions/test-mcp').send({});
+    expect(missing.status).toBe(400);
+
+    const unknown = await request(testApp.app)
+      .post('/api/actions/test-mcp')
+      .send({ mcpId: 'no-such-id' });
+    expect(unknown.status).toBe(404);
   });
 
   it('all three statuses (stopped, running, error) coexist in one response without omission', async () => {

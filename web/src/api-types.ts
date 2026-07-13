@@ -93,4 +93,14 @@ export interface McpStatusEntry {
   mcpId: string;
   slug: string;
   status: UpstreamStatus;
+  /** Present when status === 'error': the last connection failure reason. */
+  error?: string;
+}
+
+/** Outcome of POST /api/actions/test-mcp (an on-demand connect). */
+export interface McpTestResult {
+  mcpId: string;
+  slug: string;
+  status: 'running' | 'error';
+  error?: string;
 }

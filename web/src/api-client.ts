@@ -5,6 +5,7 @@ import type {
   CreateMcpServerInput,
   McpServer,
   McpStatusEntry,
+  McpTestResult,
   UpdateMcpServerInput,
   WriteConfigResult,
 } from './api-types.js';
@@ -131,6 +132,12 @@ export function rotateToken(
 
 export function getMcpStatus(): Promise<{ statuses: McpStatusEntry[] }> {
   return apiFetch('/actions/status');
+}
+
+/** Forces the lazy upstream to connect NOW and reports the outcome --
+ * "is this MCP actually working?" as a button. */
+export function testMcp(mcpId: string): Promise<McpTestResult> {
+  return apiFetch('/actions/test-mcp', { method: 'POST', body: JSON.stringify({ mcpId }) });
 }
 
 /** Returns the raw config-file content that a write-configs call WOULD

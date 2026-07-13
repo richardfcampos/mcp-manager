@@ -5,7 +5,7 @@ import { allowedMcpIds } from '../domain/assignments/assignments-service.js';
 import { getConsumer } from '../domain/consumers/consumers-repository.js';
 import { listConsumers, rotateToken } from '../domain/consumers/consumers-service.js';
 import type { ConsumerRecord } from '../domain/consumers/consumer-types.js';
-import { listServers } from '../domain/mcp-servers/mcp-servers-service.js';
+import { getServer, listServers } from '../domain/mcp-servers/mcp-servers-service.js';
 import { rewriteConfigsForConsumers } from '../config-writers/config-rewrite-service.js';
 import { MANAGED_KEY, mergeManagedEntries, removeManagedEntries } from '../config-writers/managed-block.js';
 import type { ManagedEntry } from '../config-writers/writer-interface.js';
@@ -106,8 +106,40 @@ export function createActionsRoute(deps: AppDeps): Router {
       mcpId: server.id,
       slug: server.slug,
       status: deps.upstreamRegistry.status(server.id),
+      error: deps.upstreamRegistry.lastError(server.id),
     }));
     res.status(200).json({ statuses });
+  });
+
+  // On-demand connectivity check: forces the lazy upstream to connect NOW
+  // and reports the outcome, so "is this MCP actually working?" is a button
+  // instead of waiting for a client's first tool call. Always 200 -- the
+  // outcome (running vs error + reason) is the payload, not an HTTP failure.
+  router.post('/test-mcp', async (req, res, next) => {
+    try {
+      const body = req.body;
+      if (!isRecord(body) || typeof body.mcpId !== 'string' || !body.mcpId) {
+        throw new ValidationError('mcpId is required');
+      }
+      const server = getServer({ db: deps.db, masterKey: deps.masterKey }, body.mcpId);
+      if (!server) {
+        throw new NotFoundError(`No MCP server found with id: ${body.mcpId}`);
+      }
+
+      try {
+        await deps.upstreamRegistry.getClient(body.mcpId);
+        res.status(200).json({ mcpId: body.mcpId, slug: server.slug, status: 'running' });
+      } catch (err) {
+        res.status(200).json({
+          mcpId: body.mcpId,
+          slug: server.slug,
+          status: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } catch (err) {
+      next(classifyDomainError(err));
+    }
   });
 
   // Renders the config content that a write-configs call WOULD produce for
