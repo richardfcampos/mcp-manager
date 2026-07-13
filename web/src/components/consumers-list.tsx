@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { discoverConsumers, getAssignmentMatrix, listConsumers, registerProjectConsumer } from '../api-client.js';
-import type { Consumer } from '../api-types.js';
+import {
+  discoverConsumers,
+  getAssignmentMatrix,
+  listConsumers,
+  listMcpServers,
+  registerProjectConsumer,
+} from '../api-client.js';
+import type { Consumer, McpServer } from '../api-types.js';
 import { groupConsumers, matchesQuery } from './project-category-utils.js';
 import ProjectRow from './project-row.js';
 import { EmptyState, ErrorNote, SkeletonRows, cls } from './ui-primitives.js';
@@ -10,7 +16,8 @@ import { EmptyState, ErrorNote, SkeletonRows, cls } from './ui-primitives.js';
  * copy and scoped config writes. */
 export default function ConsumersList(): React.JSX.Element {
   const [consumers, setConsumers] = useState<Consumer[]>([]);
-  const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
+  const [servers, setServers] = useState<McpServer[]>([]);
+  const [assignedByConsumer, setAssignedByConsumer] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,10 +29,15 @@ export default function ConsumersList(): React.JSX.Element {
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      const [consumersList, matrix] = await Promise.all([listConsumers(), getAssignmentMatrix()]);
+      const [consumersList, matrix, serversList] = await Promise.all([
+        listConsumers(),
+        getAssignmentMatrix(),
+        listMcpServers(),
+      ]);
       setConsumers(consumersList);
-      setAssignedCounts(
-        Object.fromEntries(matrix.consumers.map((row) => [row.consumerId, row.allowedMcpIds.length])),
+      setServers(serversList);
+      setAssignedByConsumer(
+        Object.fromEntries(matrix.consumers.map((row) => [row.consumerId, row.allowedMcpIds])),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
@@ -145,7 +157,8 @@ export default function ConsumersList(): React.JSX.Element {
                         <ProjectRow
                           key={consumer.id}
                           consumer={consumer}
-                          assignedCount={assignedCounts[consumer.id] ?? 0}
+                          servers={servers}
+                          assignedMcpIds={assignedByConsumer[consumer.id] ?? []}
                           onChanged={refresh}
                         />
                       ))}
