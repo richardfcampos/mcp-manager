@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Graphite-green console palette (RGB triplets for Tailwind alpha). */
+    --bg: 12 15 13;
+    --surface: 18 22 19;
+    --raise: 26 31 27;
+    --line: 232 237 230;
+    --ink: 232 237 230;
+    --dim: 164 176 164;
+    --faint: 126 137 127;
+    --accent: 155 232 112;
+    --ok: 127 217 139;
+    --warn: 227 195 107;
+    --err: 226 116 79;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    /* Faint phosphor wash bleeding from the top-left of the console. */
+    background-image: radial-gradient(70rem 40rem at 12% -8%, rgb(var(--accent) / 0.05), transparent 60%);
+  }
+
+  /* Film grain so large dark surfaces don't read as flat/sterile. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.28);
+  }
+
+  *:focus-visible {
+    outline: 2px solid rgb(var(--accent) / 0.75);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Thin console scrollbars (WebKit + Firefox). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line) / 0.18) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--line) / 0.16);
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

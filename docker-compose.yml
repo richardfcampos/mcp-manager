@@ -1,0 +1,35 @@
+services:
+  mcp-manager:
+    build: .
+    image: mcp-manager
+    restart: unless-stopped
+    environment:
+      MCP_MANAGER_MASTER_KEY: ${MCP_MANAGER_MASTER_KEY:?set MCP_MANAGER_MASTER_KEY in .env, see .env.example}
+      # Mounted at the same absolute path on both sides (see volumes below)
+      # so env.ts's existence check validates the exact path it receives,
+      # with no host/container path translation to keep in sync.
+      MCP_MANAGER_WORKSPACE_ROOT: ${MCP_MANAGER_WORKSPACE_ROOT:?set MCP_MANAGER_WORKSPACE_ROOT in .env, see .env.example}
+      PORT: ${PORT:-7788}
+      # Base URL written into the projects' client configs so clients on the
+      # LAN (e.g. another machine reaching this host as `intel`) resolve the
+      # gateway. Override in .env; defaults to the local loopback address.
+      MCP_MANAGER_PUBLIC_BASE_URL: ${MCP_MANAGER_PUBLIC_BASE_URL:-http://127.0.0.1:7788}
+    ports:
+      # Published on 0.0.0.0 (LAN-accessible), matching the other projects in
+      # this workspace. The per-project bearer token still guards the MCP
+      # gateway; the UI/API themselves have no auth, so only expose on a
+      # trusted network.
+      - '${PORT:-7788}:${PORT:-7788}'
+    volumes:
+      - ${MCP_MANAGER_WORKSPACE_ROOT}:${MCP_MANAGER_WORKSPACE_ROOT}
+      - mcp-manager-data:/app/data
+      # Persist uvx/npx download caches across image rebuilds so a stdio
+      # MCP's first-boot runtime download happens once ever, not per build
+      # (a cold cache made first connections exceed client timeouts).
+      - mcp-manager-uv-cache:/home/node/.cache/uv
+      - mcp-manager-npm-cache:/home/node/.npm
+
+volumes:
+  mcp-manager-data:
+  mcp-manager-uv-cache:
+  mcp-manager-npm-cache:

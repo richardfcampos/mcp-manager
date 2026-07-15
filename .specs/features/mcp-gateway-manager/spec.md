@@ -53,6 +53,11 @@ Toda ambiguidade é resolvida com você ou registrada aqui — nada fica silenci
 
 **Open questions:** none — todas as ambiguidades de comportamento foram resolvidas. Os 3 itens marcados `⚠️ Design` são detalhes de implementação (stack, algoritmo de cifra, esquema exato de transporte por cliente) a fixar no Design via docs oficiais/Context7 — não bloqueiam o spec.
 
+**Esclarecimentos de precisão (pós-Verifier, não alteram nenhum AC):**
+- **MCP-01 "secrets marcados":** o MVP **não** tem flag de "marcado" — todo secret informado em `secrets[]` é cifrado incondicionalmente antes de persistir. "Marcado" = "informado". Cobertura de multiplicidade (2+ secrets cifrados independentemente) verificada em `mcp-servers-service.test.ts`.
+- **MCP-02 "transporte = remoto":** não existe valor de enum `remoto`; um MCP com `url` mapeia para `http` (default) ou `sse` (flag). "Remoto" é o guarda-chuva de `http`/`sse`.
+- **PRJ-03 / ACC-01 / MCP-03 (integração):** mensagens de erro e status HTTP exatos das rotas de rejeição estão fixados nos testes de integração; "nada persistido" é provado na camada de domínio (unit). Detalhes em `validation.md`.
+
 ---
 
 ## Implicit-Requirement Dimensions Sweep (Complex — todas as dimensões)
@@ -97,7 +102,7 @@ Toda ambiguidade é resolvida com você ou registrada aqui — nada fica silenci
 **Why P1**: A atribuição precisa de um catálogo de projetos.
 
 **Acceptance Criteria**:
-1. WHEN a raiz de workspace está montada THEN o sistema SHALL listar cada subpasta imediata como um projeto descoberto
+1. WHEN a raiz de workspace está montada THEN o sistema SHALL listar cada **raiz de projeto** encontrada até 2 níveis (marker-based: pasta com `package.json`/`.git`/`go.mod`/etc. = projeto; pasta sem marcador = categoria, desce 1 nível) como um projeto descoberto _(revisado no uso: era "subpasta imediata"/1 nível; ampliado p/ workspace multi-categoria — `Code/<categoria>/<projeto>`)_
 2. WHEN eu registro manualmente um caminho existente THEN o sistema SHALL adicioná-lo como projeto
 3. WHEN eu registro um caminho inexistente ou não-gravável THEN o sistema SHALL rejeitar com erro claro
 4. WHEN uma subpasta descoberta some do disco THEN o sistema SHALL marcá-la como indisponível, não apagar suas atribuições silenciosamente
