@@ -104,10 +104,15 @@ export function createMcpServersRoute(deps: AppDeps): Router {
     }
   });
 
-  router.put('/:id', (req, res, next) => {
+  router.put('/:id', async (req, res, next) => {
     try {
       const input = parseUpdateInput(req.body);
       const updated = updateServer(serviceDeps, req.params.id, input);
+      // Drop any live upstream connection so the next call re-resolves the
+      // new config/secrets. An already-connected MCP process keeps the env
+      // it was spawned with, so an edited token is invisible until the
+      // cached client is dropped and reconnected.
+      await deps.upstreamRegistry.shutdown(req.params.id);
       res.status(200).json(updated);
     } catch (err) {
       next(classifyDomainError(err));
@@ -143,6 +148,9 @@ export function createMcpServersRoute(deps: AppDeps): Router {
         { db: deps.db, masterKey: deps.masterKey, gatewayBaseUrl: deps.gatewayBaseUrl },
         req.params.id,
       );
+      // Close the live upstream (if any) so a deleted MCP's child process
+      // doesn't linger connected after its config is gone.
+      await deps.upstreamRegistry.shutdown(req.params.id);
       res.status(200).json({ deleted: true, configRewrites });
     } catch (err) {
       next(classifyDomainError(err));
