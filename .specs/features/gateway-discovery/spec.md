@@ -53,12 +53,16 @@ Hoje o gateway achata todas as tools de todos os MCPs atribuídos no `tools/list
 1. **DISC-01**: WHEN um cliente autenticado chama `tools/list` em `POST /mcp/:token` THEN o gateway SHALL retornar exatamente as 3 meta-tools `list_mcps`, `get_mcp_tools`, `call_mcp_tool` (com schemas de entrada), e nenhuma tool de upstream achatada.
 2. **DISC-02**: WHEN o cliente chama `list_mcps` THEN o gateway SHALL retornar somente os MCPs atribuídos àquele consumer, cada um com `slug`, `name` e `purpose` — e lista vazia (não erro) para consumer com 0 MCPs.
 3. **DISC-03**: WHEN o cliente chama `get_mcp_tools` com o slug de um MCP no seu escopo THEN o gateway SHALL retornar as tools daquele upstream com nomes originais (sem prefixo) e seus inputSchemas.
-4. **DISC-04**: WHEN o cliente chama `call_mcp_tool` com `{mcp, tool, arguments}` de um MCP no escopo THEN o gateway SHALL despachar a chamada ao upstream e retornar o resultado verbatim.
+4. **DISC-04**: WHEN o cliente chama `call_mcp_tool` com `{mcp, tool, args}` de um MCP no escopo THEN o gateway SHALL despachar a chamada ao upstream e retornar o resultado verbatim.
 5. **DISC-05**: WHEN `get_mcp_tools` ou `call_mcp_tool` referencia um slug fora do escopo do consumer (inclusive um slug que existe para outro consumer) THEN o gateway SHALL retornar um erro de tool (`isError`/erro JSON-RPC) sem revelar se o slug existe, e SHALL NOT contatar upstream algum.
-6. **DISC-06**: WHEN `call_mcp_tool` recebe payload malformado (sem `mcp`/`tool` string, `arguments` não-objeto) THEN o gateway SHALL retornar erro de validação sem crash e sem contatar upstream.
+6. **DISC-06**: WHEN `call_mcp_tool` recebe payload malformado (sem `mcp`/`tool` string, `args` não-objeto) THEN o gateway SHALL retornar erro de validação sem crash e sem contatar upstream.
 7. **DISC-07**: WHEN um upstream em escopo falha ao conectar THEN `list_mcps` SHALL ainda listá-lo (dados do DB) e `get_mcp_tools`/`call_mcp_tool` daquele MCP SHALL retornar erro isolado — sem afetar chamadas a outros MCPs.
+8. **DISC-08** (emenda 2026-07-16, achado em uso real): WHEN `call_mcp_tool` recebe qualquer campo de topo fora de `{mcp, tool, args}` (ex.: `input`, `arguments`) THEN o gateway SHALL retornar `isError` nomeando o campo recebido E o campo válido esperado (`args`), SHALL NOT contatar upstream algum, e SHALL NOT tratar o payload como "tool sem argumentos".
+9. **DISC-09** (emenda 2026-07-16, achado em uso real): WHEN `call_mcp_tool` é chamado sem `args` THEN o gateway SHALL encaminhar `{}` ao upstream (nunca `undefined`), para que uma tool com parâmetros obrigatórios responda "campo X faltando" em vez de "expected object".
 
-**Independent Test**: Registrar 2 MCPs, atribuir 1 ao consumer A; via cliente MCP real: `tools/list` → 3 meta-tools; `list_mcps` → só o MCP atribuído; `get_mcp_tools`+`call_mcp_tool` funcionam nele; slug do outro MCP → erro opaco.
+**Independent Test**: Registrar 2 MCPs, atribuir 1 ao consumer A; via cliente MCP real: `tools/list` → 3 meta-tools; `list_mcps` → só o MCP atribuído; `get_mcp_tools`+`call_mcp_tool` funcionam nele; slug do outro MCP → erro opaco; `call_mcp_tool` com `input` em vez de `args` → isError apontando `args` (não erro do upstream).
+
+**Nota de design (DISC-08/09):** o nome original do campo era `arguments`, o que produzia `arguments` aninhado dentro do `arguments` do envelope `tools/call` do MCP. Em uso real a IA chamante mandou `input`; como `arguments` era opcional, o gateway leu "sem argumentos" e encaminhou `undefined`, e o upstream devolveu um erro de schema críptico. Renomear para `args` remove a colisão; DISC-08 impede que um campo errado vire silenciosamente "sem argumentos".
 
 ---
 
@@ -142,6 +146,8 @@ Hoje o gateway achata todas as tools de todos os MCPs atribuídos no `tools/list
 | DISC-05 | P1: Descoberta | Design | Pending |
 | DISC-06 | P1: Descoberta | Design | Pending |
 | DISC-07 | P1: Descoberta | Design | Pending |
+| DISC-08 | P1: Descoberta (emenda) | Fix | Pending |
+| DISC-09 | P1: Descoberta (emenda) | Fix | Pending |
 | DESC-01 | P1: Propósito | Design | Pending |
 | DESC-02 | P1: Propósito | Design | Pending |
 | DESC-03 | P1: Propósito | Design | Pending |

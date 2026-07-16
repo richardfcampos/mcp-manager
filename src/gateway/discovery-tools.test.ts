@@ -211,6 +211,46 @@ describe('discovery-tools', () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('no_such_tool');
     });
+
+    it('DISC-08: unknown fields are rejected on get_mcp_tools and list_mcps too, registry untouched', async () => {
+      const registry = fakeRegistry({ 'mcp-a': stubEntry('mcp-a', 'a') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const getTools = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'get_mcp_tools', {
+        mcp: 'a',
+        slug: 'a',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      const listMcps = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'list_mcps', {
+        filter: 'x',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(getTools.isError).toBe(true);
+      expect(getTools.content[0].text).toContain('"slug"');
+      expect(getTools.content[0].text).toContain('mcp');
+      expect(listMcps.isError).toBe(true);
+      expect(listMcps.content[0].text).toContain('"filter"');
+      expect(registry.getClient).not.toHaveBeenCalled();
+    });
+
+    it('list_mcps accepts both an empty object and no arguments at all', async () => {
+      const deps: DiscoveryToolDeps = {
+        registry: fakeRegistry({}),
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const withEmpty = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'list_mcps', {})) as {
+        content: Array<{ type: string; text: string }>;
+      };
+      const withNothing = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'list_mcps', undefined)) as {
+        content: Array<{ type: string; text: string }>;
+      };
+
+      expect(parseMcps(withEmpty)).toEqual([{ slug: 'a', name: 'Alpha', purpose: 'p' }]);
+      expect(parseMcps(withNothing)).toEqual([{ slug: 'a', name: 'Alpha', purpose: 'p' }]);
+    });
   });
 
   describe('get_mcp_tools', () => {
@@ -303,7 +343,7 @@ describe('discovery-tools', () => {
   });
 
   describe('call_mcp_tool', () => {
-    it('DISC-04: forwards {name, arguments} to the upstream and returns its result verbatim', async () => {
+    it('DISC-04: forwards args verbatim as the upstream arguments and returns its result verbatim', async () => {
       const upstreamResult = { content: [{ type: 'text', text: 'done' }], structuredContent: { ok: true } };
       const registry = fakeRegistry({
         'mcp-a': stubEntry('mcp-a', 'a', {
@@ -318,11 +358,106 @@ describe('discovery-tools', () => {
       const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
         mcp: 'a',
         tool: 'search',
-        arguments: { q: 'hi' },
+        args: { q: 'hi' },
       })) as typeof upstreamResult & { calledWith: { name: string; arguments: unknown } };
 
       expect(result.calledWith).toEqual({ name: 'search', arguments: { q: 'hi' } });
       expect(result.structuredContent).toEqual({ ok: true });
+    });
+
+    it('DISC-04: the call_mcp_tool schema declares args (not arguments), which would collide with the tools/call envelope', () => {
+      const callTool = DISCOVERY_TOOL_DEFINITIONS.find((tool) => tool.name === 'call_mcp_tool');
+      const properties = callTool?.inputSchema.properties as Record<string, unknown>;
+
+      expect(Object.keys(properties).sort()).toEqual(['args', 'mcp', 'tool']);
+      // The description must steer the calling AI to the real field name --
+      // it is the only contract an AI reads before building the payload.
+      expect(callTool?.description).toContain('"args"');
+    });
+
+    it('DISC-09: an omitted args forwards {} to the upstream, never undefined', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', {
+          callTool: async (params) => ({ calledWith: params }),
+        }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+      })) as { calledWith: { name: string; arguments: unknown } };
+
+      expect(result.calledWith).toEqual({ name: 'search', arguments: {} });
+      // Explicitly not undefined: forwarding undefined made the upstream reject
+      // the envelope itself ("expected object") instead of naming the missing
+      // parameter.
+      expect(result.calledWith.arguments).not.toBeUndefined();
+    });
+
+    it('DISC-08: an unknown top-level field is rejected naming both it and args, without touching the registry', async () => {
+      const registry = fakeRegistry({ 'mcp-a': stubEntry('mcp-a', 'a') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+        input: { q: 'hi' },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('"input"');
+      expect(result.content[0].text).toContain('args');
+      expect(registry.getClient).not.toHaveBeenCalled();
+    });
+
+    it('DISC-08: the old field name "arguments" is now unknown and must NOT silently pass as no-arguments', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', { callTool: async (params) => ({ calledWith: params }) }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+        arguments: { q: 'hi' },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('"arguments"');
+      expect(result.content[0].text).toContain('args');
+      // The regression: a stray field must never reach the upstream as an
+      // argument-less call.
+      expect(registry.getClient).not.toHaveBeenCalled();
+    });
+
+    it('DISC-08: every unknown field is named, not just the first', async () => {
+      const registry = fakeRegistry({ 'mcp-a': stubEntry('mcp-a', 'a') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+        input: {},
+        params: {},
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('"input"');
+      expect(result.content[0].text).toContain('"params"');
+      expect(registry.getClient).not.toHaveBeenCalled();
     });
 
     it('edge: a nonexistent tool on a valid MCP proxies the upstream isError result verbatim', async () => {
@@ -384,7 +519,7 @@ describe('discovery-tools', () => {
       const badArgs = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
         mcp: 'a',
         tool: 'search',
-        arguments: [1, 2, 3],
+        args: [1, 2, 3],
       })) as { isError?: boolean; content: Array<{ text: string }> };
 
       expect(missingMcp.isError).toBe(true);
@@ -392,7 +527,7 @@ describe('discovery-tools', () => {
       expect(missingTool.isError).toBe(true);
       expect(missingTool.content[0].text).toContain('"tool"');
       expect(badArgs.isError).toBe(true);
-      expect(badArgs.content[0].text).toContain('"arguments"');
+      expect(badArgs.content[0].text).toContain('"args"');
       expect(registry.getClient).not.toHaveBeenCalled();
     });
 

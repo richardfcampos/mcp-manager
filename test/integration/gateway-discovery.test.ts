@@ -165,10 +165,38 @@ describe('gateway discovery: meta-tools over POST /mcp/:token', () => {
     // call_mcp_tool -> upstream result proxied verbatim.
     const called = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'stdio-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'stdio-mcp', tool: 'ping', args: {} },
     });
     expect((called.content as TextContent[])[0]).toMatchObject({ type: 'text', text: 'pong' });
     expect(called.isError).toBeFalsy();
+
+    await client.close();
+  });
+
+  it('DISC-08: a stray top-level field is rejected by the gateway, not forwarded as an argument-less call', async () => {
+    const client = await connectedClient(tokenAssigned);
+
+    // The real-world regression, end to end: the calling AI used `input` for
+    // the tool's arguments. The old optional `arguments` field read as absent,
+    // so the gateway forwarded undefined and the upstream answered with an
+    // opaque schema error. The gateway must own this error and name `args`.
+    const strayField = await client.callTool({
+      name: 'call_mcp_tool',
+      arguments: { mcp: 'stdio-mcp', tool: 'echo', input: { text: 'hi' } },
+    });
+
+    expect(strayField.isError).toBe(true);
+    const text = (strayField.content as TextContent[])[0].text;
+    expect(text).toContain('"input"');
+    expect(text).toContain('args');
+
+    // The now-renamed field is itself just an unknown field.
+    const oldFieldName = await client.callTool({
+      name: 'call_mcp_tool',
+      arguments: { mcp: 'stdio-mcp', tool: 'echo', arguments: { text: 'hi' } },
+    });
+    expect(oldFieldName.isError).toBe(true);
+    expect((oldFieldName.content as TextContent[])[0].text).toContain('"arguments"');
 
     await client.close();
   });
@@ -211,9 +239,14 @@ describe('gateway discovery: meta-tools over POST /mcp/:token', () => {
     // call_mcp_tool is opaque the same way and never proxies out of scope.
     const calledOutOfScope = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'other-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'other-mcp', tool: 'ping', args: {} },
     });
     expect(calledOutOfScope.isError).toBe(true);
+    // Pin the reason: a well-formed payload must fail scope resolution, not the
+    // unknown-field guard that precedes it.
+    expect((calledOutOfScope.content as TextContent[])[0].text).toBe(
+      'MCP "other-mcp" is not available for this consumer',
+    );
 
     await client.close();
   });

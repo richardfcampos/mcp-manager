@@ -154,7 +154,7 @@ describe('token-resolved scope is captured per-request in the meta-tool handler 
 
     const calledOther = await alpha.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'beta-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'beta-mcp', tool: 'ping', args: {} },
     });
     expect(calledOther.isError).toBe(true);
 
