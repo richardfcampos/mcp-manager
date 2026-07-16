@@ -49,6 +49,7 @@ function parseCreateInput(body: unknown): CreateServerInput {
     url: typeof body.url === 'string' ? body.url : undefined,
     sse: typeof body.sse === 'boolean' ? body.sse : undefined,
     headers: isRecord(body.headers) ? (body.headers as Record<string, string>) : undefined,
+    purpose: typeof body.purpose === 'string' ? body.purpose : undefined,
     secrets: parseSecrets(body.secrets),
   };
 }
@@ -70,6 +71,7 @@ function parseUpdateInput(body: unknown): UpdateServerInput {
         : isRecord(body.headers)
           ? (body.headers as Record<string, string>)
           : undefined,
+    purpose: body.purpose === null ? null : typeof body.purpose === 'string' ? body.purpose : undefined,
     secrets: parseSecrets(body.secrets),
     removeSecretKeys: parseRemoveSecretKeys(body.removeSecretKeys),
   };
