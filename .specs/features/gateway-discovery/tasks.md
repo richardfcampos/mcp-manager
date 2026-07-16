@@ -9,7 +9,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 ---
 
 **Design**: `.specs/features/gateway-discovery/design.md`
-**Status**: In Progress — Fase 1 ✅ COMPLETA (T1 `97c9490`, T2 `fe10f5e`, T3 `04fb6d1`, fix `827aa64`; build+lint+254/254 verdes; +15 testes). Fix loop 1 fechado: `InsertServerInput.purpose` opcional (read shapes intactos). Desvios aceitos: repository.test.ts já existia (estendido); regex de `classifyDomainError` estendida em error-middleware.ts (necessário pro AC de 400 sem violar camadas); fixture de omissão agora exercita omissão de verdade. **Próximo: Fase 2 (T4–T5, Opus).**
+**Status**: In Progress — Fase 1 ✅ COMPLETA (T1 `97c9490`, T2 `fe10f5e`, T3 `04fb6d1`, fix `827aa64`; build+lint+254/254 verdes; +15 testes). Fix loop 1 fechado: `InsertServerInput.purpose` opcional (read shapes intactos). Desvios aceitos: repository.test.ts já existia (estendido); regex de `classifyDomainError` estendida em error-middleware.ts (necessário pro AC de 400 sem violar camadas); fixture de omissão agora exercita omissão de verdade. **Fase 2 ✅ COMPLETA** (T4 `7cad898`, T5 `e838e75`; 275/275; +21 testes em discovery-tools.test.ts; ScopedMcp importado do domain; interfaces narrow locais — sem import do aggregator; SEC-10 por projeção de chaves + sanitização de throws, upstream isError proxiado verbatim; DISC-05 com assert de registry-nunca-chamado; tsc completo verde; 314 linhas aceitas — coeso por design, ~155 de código). **Próximo: Fase 3 (T6–T7, Opus).**
 **Branch**: `feat/gateway-discovery`
 **Processo (AD-020)**: orquestrador não implementa; 1 worker por fase (modelo por fase abaixo); Verifier ≠ autores; loop fix→re-verify máx. 3 iterações.
 
