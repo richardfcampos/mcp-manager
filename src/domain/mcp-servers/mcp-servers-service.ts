@@ -42,6 +42,9 @@ export interface CreateServerInput {
   url?: string;
   sse?: boolean;
   headers?: Record<string, string>;
+  /** Human-authored "what this is for" text, read by the gateway's
+   * list_mcps discovery tool (DESC-01); trimmed, max 2000 chars. */
+  purpose?: string;
   secrets?: ServiceSecretInput[];
 }
 
@@ -51,6 +54,9 @@ export interface UpdateServerInput {
   args?: string[] | null;
   url?: string | null;
   headers?: Record<string, string> | null;
+  /** undefined leaves purpose untouched; null clears it; a string is
+   * trimmed and validated the same as create (DESC-01). */
+  purpose?: string | null;
   /** Upserted by envKey: only the provided keys are replaced; untouched
    * keys keep their sealed values (the client never holds them). */
   secrets?: ServiceSecretInput[];
@@ -72,6 +78,20 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'mcp';
+}
+
+/** Generous bound for human-authored purpose text (DESC-01) -- not meant to
+ * constrain normal usage, just to keep a stray paste from bloating the row. */
+const MAX_PURPOSE_LENGTH = 2000;
+
+/** Trims a purpose value and enforces the max length; an all-whitespace
+ * value collapses to null (same as "not provided"). */
+function normalizePurpose(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length > MAX_PURPOSE_LENGTH) {
+    throw new Error(`purpose must be at most ${MAX_PURPOSE_LENGTH} characters`);
+  }
+  return trimmed || null;
 }
 
 function sealServiceSecrets(secrets: ServiceSecretInput[] | undefined, masterKey: Buffer) {
@@ -120,6 +140,8 @@ export function createServer(
     headers = input.headers ?? null;
   }
 
+  const purpose = input.purpose !== undefined ? normalizePurpose(input.purpose) : null;
+
   const id = generateId();
   mcpServersRepository.insertServer(deps.db, {
     id,
@@ -131,6 +153,7 @@ export function createServer(
     url,
     headers,
     createdAt: nowIso(),
+    purpose,
     secrets: sealServiceSecrets(input.secrets, deps.masterKey) ?? [],
   });
 
@@ -164,12 +187,20 @@ export function updateServer(
 
   const removeSecretKeys = input.removeSecretKeys?.map((key) => key.trim()).filter(Boolean);
 
+  const purpose =
+    input.purpose === undefined
+      ? undefined
+      : input.purpose === null
+        ? null
+        : normalizePurpose(input.purpose);
+
   mcpServersRepository.updateServer(deps.db, id, {
     name,
     command: input.command,
     args: input.args,
     url: input.url,
     headers: input.headers,
+    purpose,
     secrets: sealServiceSecrets(input.secrets, deps.masterKey),
     removeSecretKeys,
   });

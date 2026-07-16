@@ -25,6 +25,9 @@ export interface McpServer {
   url: string | null;
   headers: Record<string, string> | null;
   createdAt: string;
+  /** Human-authored "what this is for" text, read by the gateway's
+   * list_mcps discovery tool when set (DESC-01). */
+  purpose: string | null;
   secrets: SecretPresenceFlag[];
 }
 
@@ -41,6 +44,9 @@ export interface CreateMcpServerInput {
   url?: string;
   sse?: boolean;
   headers?: Record<string, string>;
+  /** Human-authored "what this is for" text, read by the gateway's
+   * list_mcps discovery tool (DESC-01); trimmed, max 2000 chars server-side. */
+  purpose?: string;
   secrets?: McpServerSecretInput[];
 }
 
@@ -50,6 +56,8 @@ export interface UpdateMcpServerInput {
   args?: string[] | null;
   url?: string | null;
   headers?: Record<string, string> | null;
+  /** undefined leaves purpose untouched; null clears it (DESC-01). */
+  purpose?: string | null;
   /** Upserted by envKey; untouched keys keep their stored values. */
   secrets?: McpServerSecretInput[];
   /** Env keys whose stored secrets are deleted (applied before upserts). */

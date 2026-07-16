@@ -7,6 +7,7 @@ import {
   findByName,
   getServer,
   insertServer,
+  listScopedByIds,
   listSealedSecrets,
   listServers,
   updateServer,
@@ -169,5 +170,86 @@ describe('mcp-servers-repository', () => {
   it('getServer and listServers return null/empty for no matching data', () => {
     expect(getServer(db, 'missing')).toBeNull();
     expect(listServers(db)).toEqual([]);
+  });
+
+  it('DESC-01: purpose persists on insert and is readable via getServer', () => {
+    insertServer(db, stdioInput({ purpose: 'Queries the GDC Jira' }));
+
+    expect(getServer(db, 'mcp-1')?.purpose).toBe('Queries the GDC Jira');
+  });
+
+  it('DESC-01: insertServer defaults purpose to null when not provided', () => {
+    insertServer(db, stdioInput());
+
+    expect(getServer(db, 'mcp-1')?.purpose).toBeNull();
+  });
+
+  it('DESC-01: updateServer sets purpose, retrievable via getServer', () => {
+    insertServer(db, stdioInput());
+
+    updateServer(db, 'mcp-1', { purpose: 'Queries the GDC Jira' });
+
+    expect(getServer(db, 'mcp-1')?.purpose).toBe('Queries the GDC Jira');
+  });
+
+  it('DESC-01: updateServer clears purpose via explicit null', () => {
+    insertServer(db, stdioInput({ purpose: 'Queries the GDC Jira' }));
+
+    updateServer(db, 'mcp-1', { purpose: null });
+
+    expect(getServer(db, 'mcp-1')?.purpose).toBeNull();
+  });
+
+  it('DESC-01: updateServer leaves purpose untouched when omitted (undefined)', () => {
+    insertServer(db, stdioInput({ purpose: 'Queries the GDC Jira' }));
+
+    updateServer(db, 'mcp-1', { name: 'GitHub MCP' });
+
+    expect(getServer(db, 'mcp-1')?.purpose).toBe('Queries the GDC Jira');
+  });
+
+  it('SEC-10: listScopedByIds returns only the requested ids with the exact key set {id,slug,name,purpose}', () => {
+    insertServer(db, stdioInput({ purpose: 'Queries the GDC Jira' }));
+    insertServer(
+      db,
+      stdioInput({
+        id: 'mcp-2',
+        slug: 'slack',
+        name: 'Slack',
+        secrets: [],
+      }),
+    );
+    insertServer(db, stdioInput({ id: 'mcp-3', slug: 'notion', name: 'Notion', secrets: [] }));
+
+    const scoped = listScopedByIds(db, ['mcp-1', 'mcp-2']);
+
+    expect(scoped).toHaveLength(2);
+    expect(scoped.map((s) => s.id).sort()).toEqual(['mcp-1', 'mcp-2']);
+    for (const entry of scoped) {
+      expect(Object.keys(entry).sort()).toEqual(['id', 'name', 'purpose', 'slug']);
+    }
+    expect(scoped).toEqual(
+      expect.arrayContaining([
+        { id: 'mcp-1', slug: 'github', name: 'GitHub', purpose: 'Queries the GDC Jira' },
+        { id: 'mcp-2', slug: 'slack', name: 'Slack', purpose: null },
+      ]),
+    );
+    // command/args/secrets never leak through the scoped shape (SEC-10)
+    expect(JSON.stringify(scoped)).not.toContain('npx');
+    expect(JSON.stringify(scoped)).not.toContain('cipher-1');
+  });
+
+  it('SEC-10: listScopedByIds silently ignores unknown ids', () => {
+    insertServer(db, stdioInput());
+
+    const scoped = listScopedByIds(db, ['mcp-1', 'does-not-exist']);
+
+    expect(scoped).toEqual([{ id: 'mcp-1', slug: 'github', name: 'GitHub', purpose: null }]);
+  });
+
+  it('listScopedByIds returns an empty array for an empty id list', () => {
+    insertServer(db, stdioInput());
+
+    expect(listScopedByIds(db, [])).toEqual([]);
   });
 });

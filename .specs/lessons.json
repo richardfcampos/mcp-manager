@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 2,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "gate_fail::task que muda um type compartilhado precisa de gate build tsc na propria task test unit test nao compilam fixtures de outros modulos e o erro fica latente ate a fase final",
+      "text": "Task que muda um type compartilhado precisa de gate build (tsc) na propria task: test:unit/test nao compilam fixtures de outros modulos e o erro fica latente ate a fase final",
+      "signal": "gate_fail",
+      "scope": "src/domain",
+      "status": "candidate",
+      "features": [
+        "gateway-discovery"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "InsertServerInput purpose / pnpm build pos-fase-1 (src/domain)"
+      ],
+      "created": "2026-07-16T15:34:25Z",
+      "last_seen": "2026-07-16T15:34:25Z"
+    }
+  ]
+}

@@ -52,7 +52,7 @@ export function classifyDomainError(err: unknown): unknown {
   if (/^no .+ found with id:/i.test(err.message)) {
     return new NotFoundError(err.message);
   }
-  if (/required|does not exist|not writable/i.test(err.message)) {
+  if (/required|does not exist|not writable|must be at most \d+ characters/i.test(err.message)) {
     return new ValidationError(err.message);
   }
   return err;

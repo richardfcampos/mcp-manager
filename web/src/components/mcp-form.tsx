@@ -31,6 +31,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
   const [url, setUrl] = useState(mcp?.url ?? '');
   const [sse, setSse] = useState(mcp?.transport === 'sse');
   const [headersText, setHeadersText] = useState(mcp?.headers ? JSON.stringify(mcp.headers) : '');
+  const [purpose, setPurpose] = useState(mcp?.purpose ?? '');
   const [secrets, setSecrets] = useState<SecretDraft[]>([{ ...EMPTY_SECRET }]);
   const [removeKeys, setRemoveKeys] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
     setUrl(mcp?.url ?? '');
     setSse(mcp?.transport === 'sse');
     setHeadersText(mcp?.headers ? JSON.stringify(mcp.headers) : '');
+    setPurpose(mcp?.purpose ?? '');
     setSecrets([{ ...EMPTY_SECRET }]);
     setRemoveKeys([]);
     setError(null);
@@ -95,6 +97,9 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
             args: kind === 'stdio' ? args.split(' ').filter(Boolean) : null,
             url: kind === 'remote' ? url : null,
             headers: kind === 'remote' ? (headers ?? null) : null,
+            // Clearing the textarea sends null so the server clears purpose
+            // instead of leaving it untouched (undefined would do that).
+            purpose: purpose.trim() ? purpose : null,
             secrets: filledSecrets.length ? filledSecrets : undefined,
             removeSecretKeys: removeKeys.length ? removeKeys : undefined,
           })
@@ -106,6 +111,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
             url: kind === 'remote' ? url : undefined,
             sse: kind === 'remote' ? sse : undefined,
             headers: kind === 'remote' ? headers : undefined,
+            purpose: purpose.trim() ? purpose : undefined,
             secrets: filledSecrets.length ? filledSecrets : undefined,
           });
 
@@ -115,6 +121,7 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
         setCommand('');
         setArgs('');
         setUrl('');
+        setPurpose('');
         setSecrets([{ ...EMPTY_SECRET }]);
       }
     } catch (err) {
@@ -237,6 +244,21 @@ export default function McpForm({ mcp, onSaved, onCancel }: McpFormProps): React
             </div>
           </div>
         )}
+
+        <div>
+          <label htmlFor="mcp-purpose" className={cls.label}>
+            Purpose
+          </label>
+          <p className="mt-0.5 text-xs text-faint">The project AI reads this via list_mcps to decide when to use this MCP.</p>
+          <textarea
+            id="mcp-purpose"
+            className={`${cls.input} mt-1 resize-y`}
+            rows={2}
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            placeholder="Queries the GDC Jira board for issues and sprints"
+          />
+        </div>
 
         <div className="rounded-md border border-line/10 bg-raise/40 p-3">
           <p className={cls.label}>{mcp ? 'Replace / add secret env values' : 'Secret env values'}</p>

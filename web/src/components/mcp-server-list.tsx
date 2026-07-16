@@ -48,6 +48,11 @@ export default function McpServerList({ servers, onEdit, onDelete }: McpServerLi
                   ? [server.command, ...(server.args ?? [])].filter(Boolean).join(' ')
                   : server.url}
               </span>
+              {server.purpose && (
+                <span className="w-full truncate text-xs text-faint" title={server.purpose}>
+                  {server.purpose}
+                </span>
+              )}
               <span className="ml-auto flex items-center gap-1">
                 <button
                   type="button"
