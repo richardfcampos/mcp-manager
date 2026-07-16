@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 2,
+  "next_id": 4,
   "lessons": [
     {
       "id": "L-001",
@@ -22,6 +22,42 @@
       ],
       "created": "2026-07-16T15:34:25Z",
       "last_seen": "2026-07-16T15:34:25Z"
+    },
+    {
+      "id": "L-002",
+      "key": "spec_precision_gap::campo de tool que espelha nome do envelope do protocolo ex arguments dentro de tools call colide e a ia chamante inventa outro nome validar so os campos declarados deixa campo errado virar silenciosamente ausente",
+      "text": "Campo de tool que espelha nome do envelope do protocolo (ex: 'arguments' dentro de tools/call) colide e a IA chamante inventa outro nome; validar so os campos declarados deixa campo errado virar silenciosamente 'ausente'",
+      "signal": "spec_precision_gap",
+      "scope": "src/gateway",
+      "status": "candidate",
+      "features": [
+        "gateway-discovery"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "DISC-06 / call_mcp_tool arguments (src/gateway)"
+      ],
+      "created": "2026-07-16T20:37:24Z",
+      "last_seen": "2026-07-16T20:37:24Z"
+    },
+    {
+      "id": "L-003",
+      "key": "ac_gap::smoke de ponta a ponta que so exercita a tool de listagem nao prova o caminho de execucao smoke deve chamar a tool que recebe argumentos",
+      "text": "Smoke de ponta a ponta que so exercita a tool de listagem nao prova o caminho de execucao; smoke deve chamar a tool que recebe argumentos",
+      "signal": "ac_gap",
+      "scope": "test/integration",
+      "status": "candidate",
+      "features": [
+        "gateway-discovery"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "teste e2e pos-deploy (test/integration)"
+      ],
+      "created": "2026-07-16T20:37:24Z",
+      "last_seen": "2026-07-16T20:37:24Z"
     }
   ]
 }
