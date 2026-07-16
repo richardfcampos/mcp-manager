@@ -88,13 +88,17 @@ export const DISCOVERY_TOOL_DEFINITIONS: ToolDef[] = [
   {
     name: 'call_mcp_tool',
     description:
-      'Invoke a tool on a specific MCP server. Provide the MCP slug (from list_mcps), the tool name (from get_mcp_tools) and the tool arguments. The call is forwarded to the upstream MCP and its result returned verbatim.',
+      'Invoke a tool on a specific MCP server. Provide the MCP slug (from list_mcps), the tool name (from get_mcp_tools) and the tool\'s own arguments in the field named "args" -- not "arguments", not "input". The call is forwarded to the upstream MCP and its result returned verbatim.',
     inputSchema: {
       type: 'object',
       properties: {
         mcp: { type: 'string', description: 'Slug of the MCP server, exactly as returned by list_mcps.' },
         tool: { type: 'string', description: 'Tool name, exactly as returned by get_mcp_tools (no slug prefix).' },
-        arguments: {
+        // Named `args`, not `arguments`: the MCP tools/call envelope is itself
+        // {name, arguments}, so an `arguments` field here forced the calling AI
+        // to nest `arguments` inside `arguments` -- a collision it got wrong in
+        // real use, sending `input` instead (DISC-04).
+        args: {
           type: 'object',
           description: 'Arguments object for the tool, matching its inputSchema. Omit if the tool takes none.',
           additionalProperties: true,
@@ -105,6 +109,16 @@ export const DISCOVERY_TOOL_DEFINITIONS: ToolDef[] = [
     },
   },
 ];
+
+/** Top-level fields each meta-tool accepts. The low-level SDK Server does NOT
+ * validate a tools/call payload against the declared inputSchema, so the
+ * `additionalProperties: false` above is decorative -- this table is what
+ * actually enforces it at runtime (DISC-08). */
+const VALID_TOOL_FIELDS: Record<string, readonly string[]> = {
+  list_mcps: [],
+  get_mcp_tools: ['mcp'],
+  call_mcp_tool: ['mcp', 'tool', 'args'],
+};
 
 /** Serializes a payload as the JSON text content MCP clients expect. */
 function jsonResult(payload: unknown): ToolCallResult {
@@ -204,7 +218,7 @@ function unreachableError(slug: string): ToolCallResult {
 const CALL_TOOL_FIELD_ERRORS: Record<string, string> = {
   mcp: 'call_mcp_tool requires "mcp" to be a non-empty string (the MCP slug from list_mcps).',
   tool: 'call_mcp_tool requires "tool" to be a non-empty string (the tool name from get_mcp_tools).',
-  arguments: 'call_mcp_tool requires "arguments" to be an object when provided.',
+  args: 'call_mcp_tool requires "args" to be an object when provided.',
 };
 
 /** DISC-06: validates the call_mcp_tool payload shape, returning the name of
@@ -217,10 +231,33 @@ function invalidCallToolField(args: unknown): keyof typeof CALL_TOOL_FIELD_ERROR
   if (typeof obj.tool !== 'string' || obj.tool.length === 0) {
     return 'tool';
   }
-  if (obj.arguments !== undefined && !isPlainObject(obj.arguments)) {
-    return 'arguments';
+  if (obj.args !== undefined && !isPlainObject(obj.args)) {
+    return 'args';
   }
   return null;
+}
+
+/**
+ * DISC-08: rejects any top-level field outside the meta-tool's contract,
+ * naming both the offending field(s) and the valid ones so the caller can
+ * self-correct. A stray field must never degrade to "tool takes no arguments"
+ * -- that is exactly the regression this guards: a calling AI sent `input`
+ * instead of `args`, the optional field read as absent, and `undefined` went
+ * upstream where it surfaced as a cryptic schema error. Returns null for an
+ * unrecognized tool name so the dispatcher's own unknown-tool error owns it.
+ */
+function unknownFieldError(toolName: string, args: unknown): ToolCallResult | null {
+  const valid = VALID_TOOL_FIELDS[toolName] as readonly string[] | undefined;
+  if (!valid) {
+    return null;
+  }
+  const unknown = Object.keys(isPlainObject(args) ? args : {}).filter((key) => !valid.includes(key));
+  if (unknown.length === 0) {
+    return null;
+  }
+  const offending = unknown.map((key) => `"${key}"`).join(', ');
+  const expected = valid.length > 0 ? valid.join(', ') : '(none)';
+  return errorResult(`${toolName}: unknown field ${offending}. Valid fields: ${expected}.`);
 }
 
 /**
@@ -273,10 +310,10 @@ export async function handleCallMcpTool(
   if (invalidField) {
     return errorResult(CALL_TOOL_FIELD_ERRORS[invalidField]);
   }
-  const { mcp: slug, tool, arguments: toolArgs } = args as {
+  const { mcp: slug, tool, args: toolArgs } = args as {
     mcp: string;
     tool: string;
-    arguments?: Record<string, unknown>;
+    args?: Record<string, unknown>;
   };
   const scopedMcp = resolveScopedMcp(deps, allowedMcpIds, slug);
   if (!scopedMcp) {
@@ -284,7 +321,10 @@ export async function handleCallMcpTool(
   }
   try {
     const entry = await deps.registry.getClient(scopedMcp.id);
-    return await entry.client.callTool({ name: tool, arguments: toolArgs });
+    // DISC-09: an omitted `args` forwards `{}`, never `undefined` -- a tool
+    // with required parameters must answer "field X missing" rather than the
+    // upstream's opaque "expected object" on a missing arguments envelope.
+    return await entry.client.callTool({ name: tool, arguments: toolArgs ?? {} });
   } catch {
     return unreachableError(scopedMcp.slug);
   }
@@ -294,6 +334,11 @@ export async function handleCallMcpTool(
  * Dispatches a tools/call to the matching discovery handler (DISC-01). An
  * unknown tool name is a tool-level error, not a thrown/protocol error, so the
  * calling AI can read the text and recover.
+ *
+ * The unknown-field check (DISC-08) runs here, before any handler: this is the
+ * single entry point the gateway routes through, and the valid-field table is
+ * keyed by tool name, so one guard covers all three meta-tools. It precedes
+ * every handler, hence every registry/upstream contact.
  */
 export async function handleDiscoveryToolCall(
   deps: DiscoveryToolDeps,
@@ -301,6 +346,10 @@ export async function handleDiscoveryToolCall(
   toolName: string,
   args: unknown,
 ): Promise<unknown> {
+  const unknownField = unknownFieldError(toolName, args);
+  if (unknownField) {
+    return unknownField;
+  }
   switch (toolName) {
     case 'list_mcps':
       return handleListMcps(deps, allowedMcpIds);

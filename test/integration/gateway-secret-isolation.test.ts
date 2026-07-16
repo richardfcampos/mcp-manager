@@ -172,13 +172,14 @@ describe('gateway secret isolation: meta-tool responses never leak secrets or up
 
     const success = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'healthy-secret-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'healthy-secret-mcp', tool: 'ping', args: {} },
     });
+    expect(success.isError).toBeFalsy();
     assertNoLeak('call_mcp_tool success', JSON.stringify(success));
 
     const failure = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'broken-secret-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'broken-secret-mcp', tool: 'ping', args: {} },
     });
     expect(failure.isError).toBe(true);
     assertNoLeak('call_mcp_tool failure', JSON.stringify(failure));

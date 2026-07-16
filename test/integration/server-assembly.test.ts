@@ -118,7 +118,7 @@ describe('server-assembly: buildProductionServer serves api + gateway on one pro
 
     const called = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'e2e-stdio-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'e2e-stdio-mcp', tool: 'ping', args: {} },
     });
     expect((called.content as Array<{ type: string; text: string }>)[0]).toMatchObject({
       type: 'text',

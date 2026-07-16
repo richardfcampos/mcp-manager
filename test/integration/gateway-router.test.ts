@@ -176,7 +176,7 @@ describe('gateway-router: POST /mcp/:token', () => {
 
     const result = await client.callTool({
       name: 'call_mcp_tool',
-      arguments: { mcp: 'stdio-mcp', tool: 'ping', arguments: {} },
+      arguments: { mcp: 'stdio-mcp', tool: 'ping', args: {} },
     });
     const content = result.content as TextContent[];
 
