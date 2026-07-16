@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DISCOVERY_TOOL_DEFINITIONS,
+  handleDiscoveryToolCall,
   handleListMcps,
   type DiscoveryToolDeps,
   type RegistryLike,
@@ -182,6 +183,257 @@ describe('discovery-tools', () => {
       // SEC-10: the raw spawn error (which leaks a filesystem path) never
       // surfaces in the response.
       expect(JSON.stringify(mcps)).not.toContain('/secret/path');
+    });
+  });
+
+  describe('handleDiscoveryToolCall dispatch', () => {
+    it('routes list_mcps to its handler', async () => {
+      const deps: DiscoveryToolDeps = {
+        registry: fakeRegistry({}),
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'list_mcps', undefined)) as {
+        content: Array<{ type: string; text: string }>;
+      };
+
+      expect(parseMcps(result)).toEqual([{ slug: 'a', name: 'Alpha', purpose: 'p' }]);
+    });
+
+    it('returns a tool error (not a throw) for an unknown tool name', async () => {
+      const deps: DiscoveryToolDeps = { registry: fakeRegistry({}), listScopedMcps: scopedReader([]) };
+
+      const result = (await handleDiscoveryToolCall(deps, [], 'no_such_tool', {})) as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('no_such_tool');
+    });
+  });
+
+  describe('get_mcp_tools', () => {
+    it('DISC-03: returns the scoped MCP tools with ORIGINAL names, description and inputSchema', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', {
+          listTools: async () => ({
+            tools: [{ name: 'search', description: 'find things', inputSchema: { type: 'object' } }],
+          }),
+        }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'get_mcp_tools', { mcp: 'a' })) as {
+        content: Array<{ text: string }>;
+      };
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload).toEqual({
+        mcp: 'a',
+        tools: [{ name: 'search', description: 'find things', inputSchema: { type: 'object' } }],
+      });
+    });
+
+    it('edge: identically-named tools on different MCPs are disambiguated by which mcp is asked', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', { listTools: async () => ({ tools: [{ name: 'search' }] }) }),
+        'mcp-b': stubEntry('mcp-b', 'b', { listTools: async () => ({ tools: [{ name: 'search' }] }) }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([
+          { id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' },
+          { id: 'mcp-b', slug: 'b', name: 'Beta', purpose: 'p' },
+        ]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a', 'mcp-b'], 'get_mcp_tools', {
+        mcp: 'a',
+      })) as { content: Array<{ text: string }> };
+
+      expect(JSON.parse(result.content[0].text).mcp).toBe('a');
+    });
+
+    it('DISC-05: an out-of-scope slug and a nonexistent slug produce the identical opaque error, registry untouched', async () => {
+      const scoped = scopedReader([{ id: 'mine', slug: 'mine', name: 'Mine', purpose: 'p' }]);
+      // 'jira' belongs to another consumer here, but that upstream is never
+      // resolved because scope resolution reads the DB, not the registry.
+      const registryWithOther = fakeRegistry({ 'other-id': stubEntry('other-id', 'jira') });
+      const registryEmpty = fakeRegistry({});
+
+      const outOfScope = (await handleDiscoveryToolCall(
+        { registry: registryWithOther, listScopedMcps: scoped },
+        ['mine'],
+        'get_mcp_tools',
+        { mcp: 'jira' },
+      )) as { isError?: boolean; content: Array<{ text: string }> };
+      const nonexistent = (await handleDiscoveryToolCall(
+        { registry: registryEmpty, listScopedMcps: scoped },
+        ['mine'],
+        'get_mcp_tools',
+        { mcp: 'jira' },
+      )) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(outOfScope.isError).toBe(true);
+      expect(outOfScope.content[0].text).toBe(nonexistent.content[0].text);
+      expect(registryWithOther.getClient).not.toHaveBeenCalled();
+      expect(registryEmpty.getClient).not.toHaveBeenCalled();
+    });
+
+    it('DISC-07/SEC-10: an unreachable upstream yields the sanitized reach error (no raw path)', async () => {
+      const registry = fakeRegistry({ 'mcp-a': new Error('spawn /secret/path/uvx ENOENT') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'get_mcp_tools', { mcp: 'a' })) as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe('Failed to reach MCP "a"');
+      expect(JSON.stringify(result)).not.toContain('/secret/path');
+    });
+  });
+
+  describe('call_mcp_tool', () => {
+    it('DISC-04: forwards {name, arguments} to the upstream and returns its result verbatim', async () => {
+      const upstreamResult = { content: [{ type: 'text', text: 'done' }], structuredContent: { ok: true } };
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', {
+          callTool: async (params) => ({ ...upstreamResult, calledWith: params }),
+        }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+        arguments: { q: 'hi' },
+      })) as typeof upstreamResult & { calledWith: { name: string; arguments: unknown } };
+
+      expect(result.calledWith).toEqual({ name: 'search', arguments: { q: 'hi' } });
+      expect(result.structuredContent).toEqual({ ok: true });
+    });
+
+    it('edge: a nonexistent tool on a valid MCP proxies the upstream isError result verbatim', async () => {
+      const upstreamError = { content: [{ type: 'text', text: 'Unknown tool: nope' }], isError: true };
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', { callTool: async () => upstreamError }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'nope',
+      });
+
+      expect(result).toEqual(upstreamError);
+    });
+
+    it('edge: identically-named tools route to the correct upstream by the {mcp, tool} pair', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', {
+          callTool: async (params) => ({ from: 'a', calledWith: params }),
+        }),
+        'mcp-b': stubEntry('mcp-b', 'b', {
+          callTool: async (params) => ({ from: 'b', calledWith: params }),
+        }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([
+          { id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' },
+          { id: 'mcp-b', slug: 'b', name: 'Beta', purpose: 'p' },
+        ]),
+      };
+
+      const toB = (await handleDiscoveryToolCall(deps, ['mcp-a', 'mcp-b'], 'call_mcp_tool', {
+        mcp: 'b',
+        tool: 'search',
+      })) as { from: string };
+
+      expect(toB.from).toBe('b');
+    });
+
+    it('DISC-06: a malformed payload is rejected naming the bad field, without touching the registry', async () => {
+      const registry = fakeRegistry({ 'mcp-a': stubEntry('mcp-a', 'a') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const missingMcp = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        tool: 'search',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      const missingTool = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      const badArgs = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+        arguments: [1, 2, 3],
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(missingMcp.isError).toBe(true);
+      expect(missingMcp.content[0].text).toContain('"mcp"');
+      expect(missingTool.isError).toBe(true);
+      expect(missingTool.content[0].text).toContain('"tool"');
+      expect(badArgs.isError).toBe(true);
+      expect(badArgs.content[0].text).toContain('"arguments"');
+      expect(registry.getClient).not.toHaveBeenCalled();
+    });
+
+    it('DISC-05: an out-of-scope slug is rejected opaquely without touching the registry', async () => {
+      const registry = fakeRegistry({ 'other-id': stubEntry('other-id', 'jira') });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mine', slug: 'mine', name: 'Mine', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mine'], 'call_mcp_tool', {
+        mcp: 'jira',
+        tool: 'search',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe('MCP "jira" is not available for this consumer');
+      expect(registry.getClient).not.toHaveBeenCalled();
+    });
+
+    it('SEC-10/DISC-07: a thrown upstream call is sanitized, the raw path never appears', async () => {
+      const registry = fakeRegistry({
+        'mcp-a': stubEntry('mcp-a', 'a', {
+          callTool: async () => {
+            throw new Error('spawn /secret/path/uvx ENOENT');
+          },
+        }),
+      });
+      const deps: DiscoveryToolDeps = {
+        registry,
+        listScopedMcps: scopedReader([{ id: 'mcp-a', slug: 'a', name: 'Alpha', purpose: 'p' }]),
+      };
+
+      const result = (await handleDiscoveryToolCall(deps, ['mcp-a'], 'call_mcp_tool', {
+        mcp: 'a',
+        tool: 'search',
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe('Failed to reach MCP "a"');
+      expect(JSON.stringify(result)).not.toContain('/secret/path');
     });
   });
 });

@@ -111,6 +111,16 @@ function jsonResult(payload: unknown): ToolCallResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
 
+/** A tool-level error (isError), not a thrown/protocol error, so the calling
+ * AI can read the text and recover. */
+function errorResult(message: string): ToolCallResult {
+  return { content: [{ type: 'text', text: message }], isError: true };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Resolves the description shown for a MCP in list_mcps (DESC-02): a manually
  * authored `purpose` always wins; when empty, we try the upstream's announced
@@ -156,4 +166,149 @@ export async function handleListMcps(
     })),
   );
   return jsonResult({ mcps });
+}
+
+/**
+ * Resolves a slug to its scoped metadata using ONLY the sanitized DB read --
+ * never the registry (DISC-05). A slug outside this consumer's scope, and a
+ * slug that doesn't exist at all, both resolve to null: callers must map both
+ * to the SAME opaque error so the response never reveals whether a MCP exists
+ * for some other consumer.
+ */
+function resolveScopedMcp(
+  deps: DiscoveryToolDeps,
+  allowedMcpIds: string[],
+  slug: unknown,
+): ScopedMcp | null {
+  if (typeof slug !== 'string' || slug.length === 0) {
+    return null;
+  }
+  return deps.listScopedMcps(allowedMcpIds).find((mcp) => mcp.slug === slug) ?? null;
+}
+
+/** DISC-05: identical opaque result for an out-of-scope slug and a nonexistent
+ * one -- embeds only the slug the caller already supplied, revealing nothing
+ * about MCPs owned by other consumers. */
+function notAvailableError(slug: unknown): ToolCallResult {
+  const shown = typeof slug === 'string' ? slug : '';
+  return errorResult(`MCP "${shown}" is not available for this consumer`);
+}
+
+/** SEC-10: the ONLY text emitted when an upstream connect/call throws. The raw
+ * error (e.g. `spawn /path/to/uvx ENOENT`) can leak commands and filesystem
+ * paths, so it is never included -- only the slug the caller already knows. */
+function unreachableError(slug: string): ToolCallResult {
+  return errorResult(`Failed to reach MCP "${slug}"`);
+}
+
+const CALL_TOOL_FIELD_ERRORS: Record<string, string> = {
+  mcp: 'call_mcp_tool requires "mcp" to be a non-empty string (the MCP slug from list_mcps).',
+  tool: 'call_mcp_tool requires "tool" to be a non-empty string (the tool name from get_mcp_tools).',
+  arguments: 'call_mcp_tool requires "arguments" to be an object when provided.',
+};
+
+/** DISC-06: validates the call_mcp_tool payload shape, returning the name of
+ * the first offending field (or null when valid) so the error can name it. */
+function invalidCallToolField(args: unknown): keyof typeof CALL_TOOL_FIELD_ERRORS | null {
+  const obj = isPlainObject(args) ? args : {};
+  if (typeof obj.mcp !== 'string' || obj.mcp.length === 0) {
+    return 'mcp';
+  }
+  if (typeof obj.tool !== 'string' || obj.tool.length === 0) {
+    return 'tool';
+  }
+  if (obj.arguments !== undefined && !isPlainObject(obj.arguments)) {
+    return 'arguments';
+  }
+  return null;
+}
+
+/**
+ * get_mcp_tools (DISC-03): lists the tools of one scoped MCP with their
+ * ORIGINAL names (no `<slug>__` prefix -- the {mcp, tool} pair already
+ * disambiguates), plus description and inputSchema. Only those three fields
+ * are projected, so no upstream-defined extra field can leak (SEC-10). A slug
+ * outside scope yields the opaque error without touching the registry
+ * (DISC-05); an upstream that fails to connect yields the sanitized reach
+ * error and doesn't affect other MCPs (DISC-07).
+ */
+export async function handleGetMcpTools(
+  deps: DiscoveryToolDeps,
+  allowedMcpIds: string[],
+  args: unknown,
+): Promise<ToolCallResult> {
+  const slug = isPlainObject(args) ? args.mcp : undefined;
+  const scopedMcp = resolveScopedMcp(deps, allowedMcpIds, slug);
+  if (!scopedMcp) {
+    return notAvailableError(slug);
+  }
+  try {
+    const entry = await deps.registry.getClient(scopedMcp.id);
+    const { tools } = await entry.client.listTools();
+    const mapped = tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
+    return jsonResult({ mcp: scopedMcp.slug, tools: mapped });
+  } catch {
+    return unreachableError(scopedMcp.slug);
+  }
+}
+
+/**
+ * call_mcp_tool (DISC-04): after validating the payload (DISC-06) and
+ * resolving the slug within scope (DISC-05), forwards to the upstream and
+ * returns its CallToolResult VERBATIM -- including a resolved isError result
+ * (e.g. the upstream reporting an unknown tool), which is the upstream's own
+ * data and passes through untouched. Only a THROWN connect/call failure is
+ * sanitized to the opaque reach error (SEC-10/DISC-07).
+ */
+export async function handleCallMcpTool(
+  deps: DiscoveryToolDeps,
+  allowedMcpIds: string[],
+  args: unknown,
+): Promise<unknown> {
+  const invalidField = invalidCallToolField(args);
+  if (invalidField) {
+    return errorResult(CALL_TOOL_FIELD_ERRORS[invalidField]);
+  }
+  const { mcp: slug, tool, arguments: toolArgs } = args as {
+    mcp: string;
+    tool: string;
+    arguments?: Record<string, unknown>;
+  };
+  const scopedMcp = resolveScopedMcp(deps, allowedMcpIds, slug);
+  if (!scopedMcp) {
+    return notAvailableError(slug);
+  }
+  try {
+    const entry = await deps.registry.getClient(scopedMcp.id);
+    return await entry.client.callTool({ name: tool, arguments: toolArgs });
+  } catch {
+    return unreachableError(scopedMcp.slug);
+  }
+}
+
+/**
+ * Dispatches a tools/call to the matching discovery handler (DISC-01). An
+ * unknown tool name is a tool-level error, not a thrown/protocol error, so the
+ * calling AI can read the text and recover.
+ */
+export async function handleDiscoveryToolCall(
+  deps: DiscoveryToolDeps,
+  allowedMcpIds: string[],
+  toolName: string,
+  args: unknown,
+): Promise<unknown> {
+  switch (toolName) {
+    case 'list_mcps':
+      return handleListMcps(deps, allowedMcpIds);
+    case 'get_mcp_tools':
+      return handleGetMcpTools(deps, allowedMcpIds, args);
+    case 'call_mcp_tool':
+      return handleCallMcpTool(deps, allowedMcpIds, args);
+    default:
+      return errorResult(`Unknown tool: "${toolName}"`);
+  }
 }
