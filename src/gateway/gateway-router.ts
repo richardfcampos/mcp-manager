@@ -3,7 +3,13 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createTokenContext, type GatewayRequest, type TokenContextDeps } from './token-context.js';
-import { aggregateTools, routeToolCall, type RegistryLike } from './tool-aggregator.js';
+import { listScopedByIds } from '../domain/mcp-servers/mcp-servers-repository.js';
+import {
+  DISCOVERY_TOOL_DEFINITIONS,
+  handleDiscoveryToolCall,
+  type DiscoveryToolDeps,
+  type RegistryLike,
+} from './discovery-tools.js';
 
 export interface GatewayRouterDeps extends TokenContextDeps {
   registry: RegistryLike;
@@ -18,9 +24,11 @@ const GATEWAY_SERVER_INFO = { name: 'mcp-manager-gateway', version: '0.0.0' };
  * fresh stateless `Server` + `StreamableHTTPServerTransport` pair is built
  * per request -- matching the SDK's documented stateless pattern (see
  * `@modelcontextprotocol/sdk` examples/server/simpleStatelessStreamableHttp)
- * -- whose ListTools/CallTool handlers close over the resolved
- * `req.allowedMcpIds` and delegate to the tool-aggregator (T27), which in
- * turn resolves upstream clients through the upstream-registry (T26).
+ * -- whose ListTools handler returns the 3 fixed discovery meta-tools
+ * (never flattened upstream tools) and whose CallTool handler closes over
+ * the resolved `req.allowedMcpIds` and delegates to the discovery-tools
+ * dispatcher, which resolves scoped MCPs from the DB and reaches upstream
+ * clients through the upstream-registry.
  */
 export function mountGateway(app: Express, deps: GatewayRouterDeps): void {
   app.post(
@@ -40,23 +48,33 @@ async function handleGatewayRequest(
 ): Promise<void> {
   const allowedMcpIds = req.allowedMcpIds ?? [];
 
+  // `listScopedMcps` is bound to this app's db so discovery reads only the
+  // sanitized {id, slug, name, purpose} projection (never secrets/command --
+  // SEC-10); the registry is the shared lazy-connect upstream pool.
+  const discoveryDeps: DiscoveryToolDeps = {
+    registry: deps.registry,
+    listScopedMcps: (ids) => listScopedByIds(deps.db, ids),
+  };
+
   const server = new Server(GATEWAY_SERVER_INFO, { capabilities: { tools: {} } });
 
+  // DISC-01: always exactly the 3 meta-tools, regardless of how many MCPs the
+  // consumer is assigned -- no upstream tools are flattened into this list.
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: await aggregateTools(deps.registry, allowedMcpIds),
+    tools: DISCOVERY_TOOL_DEFINITIONS,
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const result = await routeToolCall(
-      deps.registry,
+    const result = await handleDiscoveryToolCall(
+      discoveryDeps,
       allowedMcpIds,
       request.params.name,
       request.params.arguments,
     );
-    // The upstream's CallToolResult is proxied through verbatim; routeToolCall
-    // deliberately returns `unknown` since the result shape is whatever the
-    // arbitrary upstream MCP server sent, so this single cast at the SDK
-    // handler boundary is the only way to satisfy Server's typed return
+    // A meta-tool result, or an upstream's CallToolResult proxied verbatim by
+    // call_mcp_tool. handleDiscoveryToolCall returns `unknown` because the
+    // proxied shape is whatever the arbitrary upstream sent, so this single
+    // cast at the SDK handler boundary satisfies Server's typed return
     // contract without re-validating a shape we don't own.
     return result as Record<string, unknown>;
   });

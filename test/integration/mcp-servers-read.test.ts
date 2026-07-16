@@ -58,4 +58,17 @@ describe('GET /api/mcp-servers, GET /api/mcp-servers/:id', () => {
 
     expect(response.status).toBe(404);
   });
+
+  it('DESC-01: GET list and GET :id both include purpose', async () => {
+    testApp = buildTestApp();
+    const created = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'Described', kind: 'stdio', command: 'npx', purpose: 'Queries the GDC Jira' });
+
+    const listResponse = await request(testApp.app).get('/api/mcp-servers');
+    const detailResponse = await request(testApp.app).get(`/api/mcp-servers/${created.body.id}`);
+
+    expect(listResponse.body[0].purpose).toBe('Queries the GDC Jira');
+    expect(detailResponse.body.purpose).toBe('Queries the GDC Jira');
+  });
 });

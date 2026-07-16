@@ -19,10 +19,25 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 
 const EMPTY_OBJECT_SCHEMA = { type: 'object' as const, properties: {} };
 
+/**
+ * Announced via the initialize response so the gateway's list_mcps fallback
+ * (DESC-02) has an upstream description to derive when a MCP has no manually
+ * authored `purpose`. Deliberately longer than the discovery-tools 400-char
+ * truncation cap so integration tests can assert list_mcps truncates a
+ * verbose upstream instead of re-flooding the caller's context.
+ */
+const FIXTURE_INSTRUCTIONS =
+  'FIXTURE_INSTRUCTIONS: This dummy stdio MCP is a gateway integration-test fixture. ' +
+  'It advertises three tools -- ping (returns "pong"), echo (returns arguments.text) and ' +
+  'read-secret (returns the FIXTURE_SECRET env var). These instructions exist only so the ' +
+  'discovery list_mcps fallback has something to announce, and they are intentionally padded ' +
+  'well beyond four hundred characters so the truncation limit is exercised end to end: ' +
+  'padding padding padding padding padding padding padding padding padding padding padding.';
+
 async function main(): Promise<void> {
   const server = new Server(
     { name: 'dummy-stdio-mcp', version: '0.0.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: FIXTURE_INSTRUCTIONS },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

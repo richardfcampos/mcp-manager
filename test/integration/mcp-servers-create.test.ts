@@ -167,4 +167,77 @@ describe('POST /api/mcp-servers, PUT /api/mcp-servers/:id', () => {
 
     expect(response.status).toBe(400);
   });
+
+  it('DESC-01: POST with purpose -> 201 echoes it', async () => {
+    testApp = buildTestApp();
+
+    const response = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'Purposeful', kind: 'stdio', command: 'npx', purpose: 'Queries the GDC Jira' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.purpose).toBe('Queries the GDC Jira');
+  });
+
+  it('DESC-01: POST without purpose -> purpose is null', async () => {
+    testApp = buildTestApp();
+
+    const response = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'Purposeless', kind: 'stdio', command: 'npx' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.purpose).toBeNull();
+  });
+
+  it('DESC-01: POST purpose over 2000 chars -> 400', async () => {
+    testApp = buildTestApp();
+
+    const response = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'TooLong', kind: 'stdio', command: 'npx', purpose: 'x'.repeat(2001) });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('DESC-01: PUT purpose sets it', async () => {
+    testApp = buildTestApp();
+    const created = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'SetPurpose', kind: 'stdio', command: 'npx' });
+
+    const response = await request(testApp.app)
+      .put(`/api/mcp-servers/${created.body.id}`)
+      .send({ purpose: 'Queries the jetsales Jira' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.purpose).toBe('Queries the jetsales Jira');
+  });
+
+  it('DESC-01: PUT purpose:null clears it', async () => {
+    testApp = buildTestApp();
+    const created = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'ClearPurpose', kind: 'stdio', command: 'npx', purpose: 'Queries the GDC Jira' });
+
+    const response = await request(testApp.app)
+      .put(`/api/mcp-servers/${created.body.id}`)
+      .send({ purpose: null });
+
+    expect(response.status).toBe(200);
+    expect(response.body.purpose).toBeNull();
+  });
+
+  it('DESC-01: PUT purpose over 2000 chars -> 400', async () => {
+    testApp = buildTestApp();
+    const created = await request(testApp.app)
+      .post('/api/mcp-servers')
+      .send({ name: 'PutTooLong', kind: 'stdio', command: 'npx' });
+
+    const response = await request(testApp.app)
+      .put(`/api/mcp-servers/${created.body.id}`)
+      .send({ purpose: 'x'.repeat(2001) });
+
+    expect(response.status).toBe(400);
+  });
 });

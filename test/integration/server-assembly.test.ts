@@ -58,7 +58,7 @@ describe('server-assembly: buildProductionServer serves api + gateway on one pro
     expect(gatewayResponse.status).toBe(401);
   });
 
-  it('GW-01 end-to-end on one process: create MCP via /api, register a project, assign it, then an MCP client over /mcp/:token lists only that consumer\'s prefixed tool', async () => {
+  it('DISC-01/04 end-to-end on one process: create MCP via /api, register a project, assign it, then an MCP client over /mcp/:token sees the 3 meta-tools and drives the discovery flow', async () => {
     const env = buildTestEnv();
     productionServer = buildProductionServer(env);
 
@@ -98,13 +98,33 @@ describe('server-assembly: buildProductionServer serves api + gateway on one pro
 
     const client = new Client({ name: 'server-assembly-test-client', version: '0.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp/${consumer.token}`)));
-    const { tools } = await client.listTools();
-    await client.close();
 
+    // tools/list exposes the 3 fixed meta-tools, never flattened upstream tools.
+    const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
-      'e2e-stdio-mcp__echo',
-      'e2e-stdio-mcp__ping',
-      'e2e-stdio-mcp__read-secret',
+      'call_mcp_tool',
+      'get_mcp_tools',
+      'list_mcps',
     ]);
+
+    // Full discovery flow end-to-end on the REAL production assembly, proving
+    // mountGateway wires listScopedMcps to the same db: list_mcps sees the
+    // assigned MCP and call_mcp_tool proxies to the upstream verbatim.
+    const listRaw = await client.callTool({ name: 'list_mcps', arguments: {} });
+    const listed = JSON.parse((listRaw.content as Array<{ text: string }>)[0].text) as {
+      mcps: Array<{ slug: string }>;
+    };
+    expect(listed.mcps.map((mcp) => mcp.slug)).toEqual(['e2e-stdio-mcp']);
+
+    const called = await client.callTool({
+      name: 'call_mcp_tool',
+      arguments: { mcp: 'e2e-stdio-mcp', tool: 'ping', arguments: {} },
+    });
+    expect((called.content as Array<{ type: string; text: string }>)[0]).toMatchObject({
+      type: 'text',
+      text: 'pong',
+    });
+
+    await client.close();
   });
 });
