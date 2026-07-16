@@ -38,6 +38,9 @@ export interface McpServerListItem {
   url: string | null;
   headers: Record<string, string> | null;
   createdAt: string;
+  /** Human-authored "what this is for" text, read by the gateway's
+   * list_mcps discovery tool when set (DESC-01). */
+  purpose: string | null;
   secrets: SecretPresenceFlag[];
 }
 
@@ -53,6 +56,7 @@ export interface McpServerRecord {
   url: string | null;
   headers: Record<string, string> | null;
   createdAt: string;
+  purpose: string | null;
 }
 
 export interface InsertServerInput {
@@ -65,6 +69,7 @@ export interface InsertServerInput {
   url?: string | null;
   headers?: Record<string, string> | null;
   createdAt: string;
+  purpose: string | null;
   secrets: SealedSecretInput[];
 }
 
@@ -77,6 +82,17 @@ export interface UpdateServerInput {
   args?: string[] | null;
   url?: string | null;
   headers?: Record<string, string> | null;
+  /** undefined leaves purpose untouched; null clears it (DESC-01). */
+  purpose?: string | null;
   secrets?: SealedSecretInput[];
   removeSecretKeys?: string[];
+}
+
+/** Sanitized, scoped read used by the gateway's discovery tools -- never
+ * command/args/url/headers/secrets (SEC-10). */
+export interface ScopedMcp {
+  id: string;
+  slug: string;
+  name: string;
+  purpose: string | null;
 }

@@ -5,6 +5,7 @@ import type {
   McpServerListItem,
   McpServerRecord,
   McpTransport,
+  ScopedMcp,
   SealedSecretRow,
   UpdateServerInput,
 } from './mcp-server-types.js';
@@ -19,6 +20,7 @@ interface McpServerRow {
   url: string | null;
   headers: string | null;
   created_at: string;
+  purpose: string | null;
 }
 
 interface SecretRow {
@@ -41,6 +43,7 @@ function mapServerRow(row: McpServerRow): McpServerRecord {
     url: row.url,
     headers: parseJson<Record<string, string>>(row.headers),
     createdAt: row.created_at,
+    purpose: row.purpose,
   };
 }
 
@@ -69,8 +72,8 @@ function insertSecretRows(
 export function insertServer(db: Database.Database, input: InsertServerInput): void {
   withTransaction(db, () => {
     db.prepare(
-      `INSERT INTO mcp_server (id, slug, name, transport, command, args, url, headers, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO mcp_server (id, slug, name, transport, command, args, url, headers, created_at, purpose)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       input.id,
       input.slug,
@@ -81,6 +84,9 @@ export function insertServer(db: Database.Database, input: InsertServerInput): v
       input.url ?? null,
       serializeJson(input.headers ?? null),
       input.createdAt,
+      // Guarded like the other optional metadata fields above: callers that
+      // predate this column (or omit it) get null rather than a bind error.
+      input.purpose ?? null,
     );
     insertSecretRows(db, input.id, input.secrets);
   });
@@ -126,13 +132,14 @@ export function updateServer(db: Database.Database, id: string, input: UpdateSer
     }
 
     db.prepare(
-      `UPDATE mcp_server SET name = ?, command = ?, args = ?, url = ?, headers = ? WHERE id = ?`,
+      `UPDATE mcp_server SET name = ?, command = ?, args = ?, url = ?, headers = ?, purpose = ? WHERE id = ?`,
     ).run(
       input.name ?? current.name,
       input.command !== undefined ? input.command : current.command,
       input.args !== undefined ? serializeJson(input.args) : current.args,
       input.url !== undefined ? input.url : current.url,
       input.headers !== undefined ? serializeJson(input.headers) : current.headers,
+      input.purpose !== undefined ? input.purpose : current.purpose,
       id,
     );
 
@@ -179,4 +186,20 @@ export function listSealedSecrets(db: Database.Database, mcpServerId: string): S
     tag: row.tag,
     ciphertext: row.ciphertext,
   }));
+}
+
+/** Scoped, sanitized read for the gateway's discovery tools: returns only
+ * `{id, slug, name, purpose}` for the given ids -- never
+ * command/args/url/headers/secrets (SEC-10). Unknown ids are silently
+ * ignored rather than erroring, since a stale assignment shouldn't break
+ * the whole scoped list. */
+export function listScopedByIds(db: Database.Database, ids: string[]): ScopedMcp[] {
+  if (ids.length === 0) {
+    return [];
+  }
+  const placeholders = ids.map(() => '?').join(', ');
+  const rows = db
+    .prepare(`SELECT id, slug, name, purpose FROM mcp_server WHERE id IN (${placeholders})`)
+    .all(...ids) as Array<{ id: string; slug: string; name: string; purpose: string | null }>;
+  return rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, purpose: row.purpose }));
 }
