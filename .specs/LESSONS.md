@@ -32,6 +32,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: teste e2e pos-deploy (test/integration)
 - last seen: 2026-07-16T20:37:24Z
 
+### L-004 — Ao adicionar validacao que roda antes do caminho testado, testes que so assertam isError/ausencia-de-vazamento passam a satisfazer-se com o erro do proprio guard e viram ocos: ancorar o caso de sucesso com isError falsy + pin de mensagem exata
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `test/integration` · harmful: 0
+- features: gateway-discovery
+- evidence: spike-token-handler-scope + gateway-secret-isolation vs guard novo (test/integration)
+- last seen: 2026-07-16T20:58:42Z
+
 ## Quarantined (failed when applied — ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

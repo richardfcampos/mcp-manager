@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 4,
+  "next_id": 5,
   "lessons": [
     {
       "id": "L-001",
@@ -58,6 +58,24 @@
       ],
       "created": "2026-07-16T20:37:24Z",
       "last_seen": "2026-07-16T20:37:24Z"
+    },
+    {
+      "id": "L-004",
+      "key": "ac_gap::ao adicionar validacao que roda antes do caminho testado testes que so assertam iserror ausencia de vazamento passam a satisfazer se com o erro do proprio guard e viram ocos ancorar o caso de sucesso com iserror falsy pin de mensagem exata",
+      "text": "Ao adicionar validacao que roda antes do caminho testado, testes que so assertam isError/ausencia-de-vazamento passam a satisfazer-se com o erro do proprio guard e viram ocos: ancorar o caso de sucesso com isError falsy + pin de mensagem exata",
+      "signal": "ac_gap",
+      "scope": "test/integration",
+      "status": "candidate",
+      "features": [
+        "gateway-discovery"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "spike-token-handler-scope + gateway-secret-isolation vs guard novo (test/integration)"
+      ],
+      "created": "2026-07-16T20:58:42Z",
+      "last_seen": "2026-07-16T20:58:42Z"
     }
   ]
 }
