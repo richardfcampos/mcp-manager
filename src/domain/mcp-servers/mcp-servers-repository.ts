@@ -84,8 +84,6 @@ export function insertServer(db: Database.Database, input: InsertServerInput): v
       input.url ?? null,
       serializeJson(input.headers ?? null),
       input.createdAt,
-      // Guarded like the other optional metadata fields above: callers that
-      // predate this column (or omit it) get null rather than a bind error.
       input.purpose ?? null,
     );
     insertSecretRows(db, input.id, input.secrets);

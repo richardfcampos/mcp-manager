@@ -30,7 +30,6 @@ function stdioInput(overrides: Partial<InsertServerInput> = {}): InsertServerInp
     command: 'npx',
     args: ['-y', '@github/mcp-server'],
     createdAt: new Date().toISOString(),
-    purpose: null,
     secrets: [{ envKey: 'GITHUB_TOKEN', iv: 'iv-1', tag: 'tag-1', ciphertext: 'cipher-1' }],
     ...overrides,
   };

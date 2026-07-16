@@ -29,6 +29,7 @@ function fakeServer(overrides: Partial<McpServerListItem> = {}): McpServerListIt
     url: null,
     headers: null,
     createdAt: '2024-01-01T00:00:00.000Z',
+    purpose: null,
     secrets: [],
     ...overrides,
   };

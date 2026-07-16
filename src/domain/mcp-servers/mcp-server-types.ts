@@ -69,7 +69,8 @@ export interface InsertServerInput {
   url?: string | null;
   headers?: Record<string, string> | null;
   createdAt: string;
-  purpose: string | null;
+  /** Optional like the other metadata fields above: omitted persists null. */
+  purpose?: string | null;
   secrets: SealedSecretInput[];
 }
 
