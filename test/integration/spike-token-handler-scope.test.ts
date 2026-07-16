@@ -1,95 +1,163 @@
-import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { generateId, nowIso } from '../../src/db/repository-helpers.js';
+import * as assignmentsRepository from '../../src/domain/assignments/assignments-repository.js';
+import * as consumersRepository from '../../src/domain/consumers/consumers-repository.js';
+import * as mcpServersRepository from '../../src/domain/mcp-servers/mcp-servers-repository.js';
+import { mountGateway } from '../../src/gateway/gateway-router.js';
+import { buildTestApp, type TestApp } from './helpers/build-test-app.js';
+
+const FIXTURE_STDIO_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../fixtures/dummy-stdio-mcp.ts',
+);
 
 /**
- * SPIKE (T22): resolves the design's transport-timing risk -- can the
- * `:token` from `POST /mcp/:token` be read inside the per-session MCP
- * Server's ListTools/CallTool handler scope?
+ * Originally a T22 spike proving `req.params.token` is readable inside the
+ * per-request MCP Server's handler scope (Express resolves route params
+ * before any handler runs, so the token is available synchronously well
+ * before the transport is built -- no middleware-to-transport timing race).
  *
- * RESULT: YES. Express resolves `req.params.token` before any route
- * handler runs, so the token is available synchronously the moment the
- * POST handler starts executing -- well before the per-request Server and
- * StreamableHTTPServerTransport are even constructed. The chosen approach:
- * capture `req.params.token` into a local `const` at the top of the route
- * handler, then close over that const in the ListTools/CallTool handlers
- * registered on the per-request Server. No middleware-to-transport timing
- * race exists because everything happens synchronously in one handler
- * before `transport.handleRequest()` is ever awaited.
- *
- * This is the pattern gateway-router.ts (T29) and token-context.ts (T28)
- * build on: resolve token -> consumer -> allowed scope in Express
- * middleware (which also runs before the transport), then construct a
- * fresh per-request Server whose handlers close over that resolved scope.
+ * Re-expressed for the discovery protocol: the invariant now exercised is
+ * that each per-request Server's meta-tool handlers close over the scope
+ * RESOLVED FROM THAT REQUEST'S TOKEN (consumer -> allowedMcpIds), so two
+ * tokens hitting the same stateless endpoint each see only their own MCPs
+ * and a slug outside the resolved scope stays opaque -- the closure never
+ * widens past what the token resolved to.
  */
-describe('spike: token readable in per-session MCP handler scope', () => {
-  let httpServer: HttpServer | undefined;
 
-  afterEach(async () => {
-    if (httpServer) {
-      await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
-      httpServer = undefined;
-    }
+interface TextContent {
+  type: string;
+  text: string;
+}
+
+function parseJsonContent<T>(result: { content?: unknown }): T {
+  const content = result.content as TextContent[];
+  return JSON.parse(content[0].text) as T;
+}
+
+let testApp: TestApp;
+let httpServer: HttpServer;
+let port: number;
+
+let tokenAlpha: string;
+let tokenBeta: string;
+
+function insertStdioMcp(slug: string, purpose: string): string {
+  const id = generateId();
+  mcpServersRepository.insertServer(testApp.db, {
+    id,
+    slug,
+    name: slug,
+    transport: 'stdio',
+    command: process.execPath,
+    args: [FIXTURE_STDIO_PATH],
+    url: null,
+    headers: null,
+    createdAt: nowIso(),
+    // A manual purpose keeps list_mcps a pure DB read (no upstream spawn) --
+    // this spike is about scope capture, not the purpose fallback.
+    purpose,
+    secrets: [],
+  });
+  return id;
+}
+
+function insertConsumer(token: string): string {
+  const id = generateId();
+  consumersRepository.insertConsumer(testApp.db, {
+    id,
+    type: 'project',
+    name: token,
+    path: `/tmp/${token}`,
+    token,
+    clientFormats: [],
+    discovered: false,
+    available: true,
+    enabled: true,
+    createdAt: nowIso(),
+  });
+  return id;
+}
+
+async function connectedClient(token: string): Promise<Client> {
+  const client = new Client({ name: `spike-client-${token}`, version: '0.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp/${token}`)),
+  );
+  return client;
+}
+
+describe('token-resolved scope is captured per-request in the meta-tool handler closure', () => {
+  beforeAll(async () => {
+    testApp = buildTestApp();
+    const outer = express();
+    mountGateway(outer, { db: testApp.db, registry: testApp.upstreamRegistry });
+    outer.use(testApp.app);
+    httpServer = await new Promise<HttpServer>((resolve) => {
+      const listening = outer.listen(0, '127.0.0.1', () => resolve(listening));
+    });
+    port = (httpServer.address() as AddressInfo).port;
+
+    const alphaMcpId = insertStdioMcp('alpha-mcp', 'alpha purpose');
+    const betaMcpId = insertStdioMcp('beta-mcp', 'beta purpose');
+
+    tokenAlpha = 'spike-token-alpha';
+    tokenBeta = 'spike-token-beta';
+    const consumerAlpha = insertConsumer(tokenAlpha);
+    const consumerBeta = insertConsumer(tokenBeta);
+
+    assignmentsRepository.assign(testApp.db, consumerAlpha, alphaMcpId);
+    assignmentsRepository.assign(testApp.db, consumerBeta, betaMcpId);
   });
 
-  it('exposes req.params.token to the ListTools handler via a closure captured before transport handling', async () => {
-    const app = express();
-    app.use(express.json());
+  afterAll(async () => {
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    await testApp.close();
+  });
 
-    app.post('/mcp/:token', async (req, res) => {
-      // Captured here, in the route handler, BEFORE the per-session
-      // Server/transport are built -- proves the token is readable in
-      // handler scope (see spike result note above).
-      const token = req.params.token;
+  it('each token gets only its own resolved scope: list_mcps reflects the token, not the endpoint', async () => {
+    const alpha = await connectedClient(tokenAlpha);
+    const beta = await connectedClient(tokenBeta);
 
-      const server = new Server(
-        { name: 'spike-server', version: '0.0.0' },
-        { capabilities: { tools: {} } },
-      );
-      server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [
-          {
-            name: token,
-            description: 'echoes the token resolved in the route handler closure',
-            inputSchema: { type: 'object' as const, properties: {} },
-          },
-        ],
-      }));
-
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      try {
-        await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-      } finally {
-        await transport.close().catch(() => undefined);
-        await server.close().catch(() => undefined);
-      }
-    });
-
-    httpServer = await new Promise<HttpServer>((resolve) => {
-      const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
-    });
-    const { port } = httpServer.address() as AddressInfo;
-
-    const knownToken = `tok-${randomUUID()}`;
-    const client = new Client({ name: 'spike-client', version: '0.0.0' });
-    const clientTransport = new StreamableHTTPClientTransport(
-      new URL(`http://127.0.0.1:${port}/mcp/${knownToken}`),
+    const alphaListed = parseJsonContent<{ mcps: Array<{ slug: string }> }>(
+      await alpha.callTool({ name: 'list_mcps', arguments: {} }),
     );
-    await client.connect(clientTransport);
+    const betaListed = parseJsonContent<{ mcps: Array<{ slug: string }> }>(
+      await beta.callTool({ name: 'list_mcps', arguments: {} }),
+    );
 
-    const { tools } = await client.listTools();
+    expect(alphaListed.mcps.map((mcp) => mcp.slug)).toEqual(['alpha-mcp']);
+    expect(betaListed.mcps.map((mcp) => mcp.slug)).toEqual(['beta-mcp']);
 
-    expect(tools).toHaveLength(1);
-    expect(tools[0]?.name).toBe(knownToken);
+    await alpha.close();
+    await beta.close();
+  });
 
-    await client.close();
+  it('a slug belonging to the other token is opaque -- the closure never widens past the resolved scope', async () => {
+    const alpha = await connectedClient(tokenAlpha);
+
+    const gotOther = await alpha.callTool({
+      name: 'get_mcp_tools',
+      arguments: { mcp: 'beta-mcp' },
+    });
+    expect(gotOther.isError).toBe(true);
+    expect((gotOther.content as TextContent[])[0].text).toBe(
+      'MCP "beta-mcp" is not available for this consumer',
+    );
+
+    const calledOther = await alpha.callTool({
+      name: 'call_mcp_tool',
+      arguments: { mcp: 'beta-mcp', tool: 'ping', arguments: {} },
+    });
+    expect(calledOther.isError).toBe(true);
+
+    await alpha.close();
   });
 });
